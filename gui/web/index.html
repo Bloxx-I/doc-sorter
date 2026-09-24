@@ -198,6 +198,8 @@
           <div class="set-row"><div><b>Beim Anmelden starten</b><small>Läuft dann unauffällig in der Menüleiste</small></div><label class="switch"><input type="checkbox" id="s-login"><span></span></label></div>
           <div class="set-row"><div><b>Version <span id="app-version"></span></b><small id="update-info">Updates kommen direkt von GitHub</small></div>
             <div class="row-btns"><button class="btn small" id="update-check"><i data-icon="refresh"></i>Nach Updates suchen</button><button class="btn small primary hidden-field" id="update-install"><i data-icon="open"></i>Jetzt aktualisieren</button></div></div>
+          <div class="set-row"><div><b>Alles zurücksetzen</b><small>Legt alle sortierten Dokumente unter ihrem Originalnamen zurück in den Eingang, entfernt leere Ordner der App und löscht den Verlauf – danach wird alles neu analysiert. Zum erneuten Testen.</small></div>
+            <button class="btn small danger" id="reset-all"><i data-icon="undo"></i>Zurücksetzen …</button></div>
           <div class="set-row"><div><b>Einrichtungsassistent</b><small>Alles Schritt für Schritt neu einrichten</small></div><button class="btn small" id="rerun-setup"><i data-icon="sparkle"></i>Assistent starten</button></div>
         </div>
         <div class="settings-actions"><span class="muted" id="settings-msg"></span><button class="btn primary" id="settings-save"><i data-icon="check"></i>Speichern</button></div>
@@ -281,6 +283,11 @@
     </div>
   </div>
 </div>
+<div class="dialog" id="dialog"><div class="dialog-card">
+  <div class="dialog-icon"><i data-icon="alert"></i></div>
+  <h3 id="dialog-title"></h3><p id="dialog-text"></p>
+  <div class="pop-actions"><button class="btn" id="dialog-cancel">Abbrechen</button><button class="btn danger-fill" id="dialog-ok">OK</button></div>
+</div></div>
 <div class="tooltip" id="tooltip"></div>
 <div class="toasts" id="toasts"></div>
 

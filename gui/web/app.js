@@ -407,6 +407,10 @@ document.addEventListener('pointerdown', e => {
 
 /* keyboard */
 document.addEventListener('keydown', e => {
+  if ($('#dialog').classList.contains('show')) {
+    if (e.key === 'Escape') $('#dialog-cancel').click();
+    return;
+  }
   if ($('#wizard').classList.contains('show')) {   // the wizard owns the keyboard while open
     if (e.key === 'Enter' && !typing()) { e.preventDefault(); $('#wz-next').click(); }
     return;
@@ -681,6 +685,35 @@ async function installUpdate() {
   toast('Update wird installiert – der Sortierer startet gleich neu …', { kind: 'info', ms: 20000 });
   await api('install_update');
 }
+function confirmDialog(title, html, okLabel) {
+  return new Promise(resolve => {
+    $('#dialog-title').textContent = title;
+    $('#dialog-text').innerHTML = html;
+    $('#dialog-ok').textContent = okLabel;
+    $('#dialog').classList.add('show');
+    const done = value => { $('#dialog').classList.remove('show'); resolve(value); };
+    $('#dialog-ok').onclick = () => done(true);
+    $('#dialog-cancel').onclick = () => done(false);
+  });
+}
+
+$('#reset-all').addEventListener('click', async () => {
+  const p = await api('reset_preview');
+  if (!p.filed && !p.pending) { toast('Es gibt noch nichts zum Zurücksetzen', { kind: 'info' }); return; }
+  const ok = await confirmDialog('Alles zurücksetzen?',
+    `<b>${p.restorable}</b> sortierte${p.restorable === 1 ? 's Dokument wandert' : ' Dokumente wandern'} unter dem Originalnamen zurück in den Eingang`
+    + (p.filed > p.restorable ? ` (${p.filed - p.restorable} nicht mehr auffindbar)` : '') + `.<br>`
+    + `Zusätzliche Kopien und leere Ordner der App werden entfernt, Verlauf und ${p.pending} offene Vorschläge gelöscht. `
+    + `Anschließend analysiert der Sortierer alles neu.`, 'Zurücksetzen');
+  if (!ok) return;
+  try {
+    const r = await api('reset_all');
+    toast(`${r.restored} Dokument(e) zurück im Eingang, ${r.folders_removed} leere Ordner entfernt – Analyse läuft neu`, { ms: 8000 });
+    S.pending = []; S.currentId = null;
+    poll();
+  } catch (err) { toast(esc(err.message || err), { kind: 'error', ms: 9000 }); }
+});
+
 $('#update-check').addEventListener('click', () => checkUpdate(false));
 $('#update-install').addEventListener('click', installUpdate);
 

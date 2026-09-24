@@ -43,6 +43,8 @@ curl -fsSL https://raw.githubusercontent.com/Bloxx-I/doc-sorter/main/install.sh 
   wenn alles analysiert ist – du sortierst dann in einem Rutsch, während Nachzügler weiter im Hintergrund laufen.
 - **Meine Namen & Firmen** (Einstellungen → Ordner): an wen die Post geht – wird nie als Absender verwendet.
 - **Rechenleistung** (Einstellungen → System): lokale KI nur am Netzteil bzw. nur, wenn der Mac gerade ruht.
+- **Alles zurücksetzen** (Einstellungen → System): alle sortierten Dokumente wandern unter ihrem Originalnamen zurück
+  in den Eingang, leere Ordner der App verschwinden, der Verlauf wird gelöscht – praktisch zum erneuten Testen.
 
 ## KI: lokal oder auf einem schnellen Server
 

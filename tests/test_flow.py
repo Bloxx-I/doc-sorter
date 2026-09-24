@@ -185,6 +185,26 @@ class FlowTest(unittest.TestCase):
             time.sleep(0.1)
         self.assertEqual(len(self.service.db.pending()), 1)
 
+    def test_reset_all_restores_documents_and_history(self):
+        source, proposal = self._pdf("eins.pdf")
+        paths = self.service.approve(proposal["id"], proposal["filename"], ["Rechnungen", "Neu/2026"])
+        source2, proposal2 = self._pdf("zwei.pdf")
+        self.service.reject(proposal2["id"])
+        self.assertFalse(source.exists())
+        self.assertEqual(self.service.reset_preview()["restorable"], 1)
+        result = self.service.reset_all()
+        self.assertEqual(result["restored"], 1)
+        self.assertTrue(source.exists(), "document is back under its original name")
+        self.assertFalse(any(Path(p).exists() for p in paths), "all copies are gone")
+        self.assertFalse((self.output / "Neu").exists(), "folders the app created are removed when empty")
+        self.assertTrue((self.output / "Rechnungen").exists(), "pre-existing folders stay")
+        self.assertEqual(self.service.db.history(), [])
+        for _ in range(150):   # both documents are analysed again, the skipped one included
+            if len(self.service.db.pending()) == 2:
+                break
+            time.sleep(0.1)
+        self.assertEqual(sorted(Path(p["source_path"]).name for p in self.service.db.pending()), ["eins.pdf", "zwei.pdf"])
+
 
 class NormaliseSenderTest(unittest.TestCase):
     def test_legal_forms_and_known_senders(self):

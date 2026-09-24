@@ -72,6 +72,12 @@ class Api:
     def undo(self, proposal_id):
         return self._service.undo(proposal_id)
 
+    def reset_preview(self):
+        return self._service.reset_preview()
+
+    def reset_all(self):
+        return self._service.reset_all()
+
     def scan(self):
         self._service.scan(force=True)   # an explicit click also works while paused
         return True

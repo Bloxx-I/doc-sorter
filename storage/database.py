@@ -103,6 +103,31 @@ class SortHistoryDB:
         with self._connect() as con:
             return [row[0] for row in con.execute("SELECT DISTINCT destination_path FROM placements")]
 
+    def reset_candidates(self):
+        """Every filed document: its proposal, placements and original location."""
+        with self._connect() as con:
+            rows = con.execute("""SELECT proposal_id, original_filename, source_path, destination_path
+                FROM placements ORDER BY id""").fetchall()
+        grouped = {}
+        for row in rows:
+            key = row["proposal_id"] if row["proposal_id"] is not None else ("legacy", row["source_path"])
+            entry = grouped.setdefault(key, {"original_filename": row["original_filename"],
+                                             "source_path": row["source_path"], "destinations": []})
+            entry["destinations"].append(row["destination_path"])
+        return list(grouped.values())
+
+    def created_folders(self):
+        with self._connect() as con:
+            return [row[0] for row in con.execute(
+                "SELECT destination_path FROM events WHERE action='folder' AND destination_path IS NOT NULL ORDER BY id DESC")]
+
+    def wipe(self):
+        """Forget all proposals, placements and events (the files themselves are handled by the caller)."""
+        with self._connect() as con:
+            con.execute("DELETE FROM placements")
+            con.execute("DELETE FROM proposals")
+            con.execute("DELETE FROM events")
+
     def known_senders(self, limit=40):
         with self._connect() as con:
             rows = con.execute("""SELECT sender, COUNT(*) n FROM placements WHERE sender IS NOT NULL AND sender<>''

@@ -569,9 +569,11 @@ class DocumentService:
             created = []
             for target in targets:
                 if not target.exists():
+                    new_levels = [p for p in [target, *target.parents] if not p.exists()][::-1]   # parents first
                     target.mkdir(parents=True)
-                    created.append(target)
-                    self.db.event("folder", destination=str(target), detail="Neuer Ordner bei Ablage angelegt")
+                    for level in new_levels:
+                        created.append(level)
+                        self.db.event("folder", destination=str(level), detail="Neuer Ordner bei Ablage angelegt")
             if metadata:
                 self.db.update_proposal(proposal_id, {"sender": metadata.get("sender"),
                                                       "document_type": metadata.get("type"),
@@ -620,6 +622,52 @@ class DocumentService:
                 path.unlink(missing_ok=True)
             self.db.undo_placements(proposal_id, str(target.resolve()), target.stat())
             return str(target)
+
+    def reset_preview(self):
+        filed = self.db.reset_candidates()
+        present = sum(1 for f in filed if any(Path(d).is_file() for d in f["destinations"]))
+        return {"filed": len(filed), "restorable": present, "pending": len(self.db.pending())}
+
+    def reset_all(self):
+        """Put every filed document back into its inbox (original name), drop extra copies, remove folders the
+        app created that are now empty, and forget the whole history – so the same documents can be tested again."""
+        with self.lock:
+            restored, missing = [], []
+            inboxes = self.incoming_dirs
+            for entry in self.db.reset_candidates():
+                files = [Path(d) for d in entry["destinations"] if Path(d).is_file()]
+                if not files:
+                    missing.append(entry["original_filename"])
+                    continue
+                origin = Path(entry["source_path"]).parent
+                inbox = origin if origin.is_dir() and self.is_incoming(origin) else inboxes[0]
+                target = inbox / entry["original_filename"]
+                index = 2
+                while target.exists():
+                    target = inbox / f"{Path(entry['original_filename']).stem}__{index}.pdf"
+                    index += 1
+                shutil.move(str(files[0]), target)
+                for extra in files[1:]:
+                    extra.unlink(missing_ok=True)   # further copies of the same document
+                restored.append(str(target))
+            removed = 0
+            for folder in self.db.created_folders():   # newest first, so children go before parents
+                path = Path(folder)
+                try:
+                    if path.is_dir() and path.resolve().is_relative_to(self.root) and path.resolve() != self.root \
+                            and not any(p for p in path.iterdir() if p.name != ".DS_Store"):
+                        (path / ".DS_Store").unlink(missing_ok=True)
+                        path.rmdir()
+                        removed += 1
+                except OSError:
+                    pass
+            with self.lock:
+                self.in_flight.clear()
+            self.db.wipe()
+            self.db.event("reset", detail=f"{len(restored)} Dokument(e) zurück in den Eingang, "
+                                          f"{removed} leere Ordner entfernt, Verlauf gelöscht")
+        self.scan(force=True)   # analyse everything again
+        return {"restored": len(restored), "missing": missing, "folders_removed": removed}
 
     def reject(self, proposal_id):
         proposal = self.db.get_proposal(proposal_id)
