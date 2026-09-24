@@ -20,7 +20,7 @@ from watchdog.observers import Observer
 
 from pipeline.classifier import DocumentClassifier, make_filename
 from pipeline.ai import TASKS, Endpoint, endpoints_from_legacy, is_local
-from pipeline.ocr import ENGINES, ocr_pipeline, ocr_status
+from pipeline.ocr import ENGINES, ocr_pipeline, ocr_status, vision_page
 from pipeline.sort import place_document
 from storage.database import SortHistoryDB
 
@@ -587,6 +587,13 @@ class DocumentService:
     def warm_up(self):
         """Start LM Studio/Ollama in the background if an endpoint needs it (called at app start)."""
         def run():
+            if self.config.get("ocr_mode") == "vision":   # Vision loads its models (~30 s) on the first call
+                try:
+                    blank = pymupdf.open()
+                    blank.new_page(width=200, height=80).insert_text((10, 40), "Warmup")
+                    vision_page(blank[0].get_pixmap(dpi=72).tobytes("png"))
+                except Exception:
+                    pass
             for task in TASKS:
                 try:
                     Endpoint.from_config(self.config, task).ensure_running()
