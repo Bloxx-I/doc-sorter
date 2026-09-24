@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SUPPORT = Path.home() / "Library" / "Application Support" / "Dokumenten-Sortierer"
 INSTALL_CMD = f"curl -fsSL https://raw.githubusercontent.com/{REPO}/main/install.sh | bash"
 ICLOUD = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
-SETTING_KEYS = ("incoming_dirs", "output_dir", "ocr_mode", "endpoints", "own_names", "compute_policy", "embedded_text")
+SETTING_KEYS = ("incoming_dirs", "output_dir", "ocr_mode", "endpoints", "own_names", "compute_policy", "embedded_text", "analysis_mode", "reasoning_effort")
 
 
 class Api:

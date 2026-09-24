@@ -28,13 +28,26 @@ DEFAULTS = {
     "ocr_mode": "vision",
     "compute_policy": "always",   # always | plugged | plugged_idle  (only matters for local AI)
     "own_names": [],
-    "embedded_text": "never",     # never = always OCR | digital = use text of born-digital PDFs              # the user's names/companies: recipients, never senders
+    "embedded_text": "never",
+    "analysis_mode": "ocr",       # ocr = OCR, then text to the AI | vision = page images straight to the AI
+    "reasoning_effort": "xhigh",  # off | low | medium | xhigh (official Qwen 3.8 levels)     # never = always OCR | digital = use text of born-digital PDFs              # the user's names/companies: recipients, never senders
     "paddle_python": "paddle-venv/bin/python",
     "database": "storage/sort_history.db",
 }
 LEGACY_KEYS = ("lm_base_url", "llm_model", "ocr_model", "embedding_model")
 YEAR = re.compile(r"^(19|20)\d{2}$")
 MONTH = re.compile(r"^(0[1-9]|1[0-2])$")
+
+
+MAX_VISION_PAGES = 8
+
+
+def render_pages(pdf_path, dpi=150):
+    """Page images for vision models (first pages; letters and invoices put everything important there)."""
+    with pymupdf.open(pdf_path) as document:
+        if not document.is_pdf or document.needs_pass:
+            raise ValueError("Nur unverschlüsselte PDF-Dateien werden unterstützt")
+        return [page.get_pixmap(dpi=dpi, alpha=False).tobytes("png") for page in list(document)[:MAX_VISION_PAGES]]
 
 
 def on_ac_power():
@@ -245,12 +258,26 @@ class DocumentService:
                 return
             if not self._wait_for_resources(source):
                 return
-            self._stage(source, "Text wird gelesen")
-            text, method = ocr_pipeline(source, self.config, progress=lambda m: self._stage(source, m),
-                                        log=lambda m: self.db.event("ocr_fallback", source, detail=m))
-            self._stage(source, "KI analysiert")
-            model = DocumentClassifier(Endpoint.from_config(self.config, "llm"))
-            info = model.classify_and_rename(text, self.db.known_senders(), self.config.get("own_names", []))
+            effort = self.config.get("reasoning_effort") or ("off" if self.config.get("thinking") is False else "xhigh")
+            model = DocumentClassifier(Endpoint.from_config(self.config, "llm"), effort)
+            own, known = self.config.get("own_names", []), self.db.known_senders()
+            info = None
+            if self.config.get("analysis_mode") == "vision":
+                try:
+                    pages = render_pages(source)
+                    self._stage(source, f"KI liest {len(pages)} Seite(n) direkt")
+                    info = model.classify_images(pages, known, own)
+                    text = info.pop("text", "")
+                    method = f"KI direkt · {model.endpoint.model}"
+                except Exception as exc:
+                    self.db.event("ocr_fallback", source, detail=f"Direktanalyse fehlgeschlagen ({exc}); OCR übernimmt")
+                    info = None
+            if info is None:
+                self._stage(source, "Text wird gelesen")
+                text, method = ocr_pipeline(source, self.config, progress=lambda m: self._stage(source, m),
+                                            log=lambda m: self.db.event("ocr_fallback", source, detail=m))
+                self._stage(source, "KI analysiert" + (" und denkt nach" if model.thinking else ""))
+                info = model.classify_and_rename(text, known, own)
             stat = os.stat(source)
             if (stat.st_size, stat.st_mtime_ns) != fingerprint:
                 raise RuntimeError("Quelldatei hat sich während der Analyse geändert; bitte erneut scannen")

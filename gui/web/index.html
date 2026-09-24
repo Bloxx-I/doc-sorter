@@ -180,6 +180,8 @@
         </div>
         <div class="card set-card">
           <h3><i data-icon="scan"></i>Texterkennung</h3>
+          <div class="set-row"><div><b>Analyse-Weg</b><small>„Direkt“ schickt die Seiten als Bilder an das Analysemodell – ohne OCR. Braucht ein Modell, das Bilder versteht (z. B. Qwen 3.8 auf deinem Server).</small></div>
+            <div class="seg" id="analysis-seg"><button data-analysis="ocr">OCR, dann KI</button><button data-analysis="vision">Dokument direkt an die KI</button></div></div>
           <div class="pipeline" id="pipeline"></div>
           <div class="component-row" id="components"></div>
           <div class="set-row"><div><b>Erste Wahl bei Scans</b><small>PDF-Text wird immer zuerst direkt gelesen; fällt eine Erkennung aus, übernimmt die nächste</small></div>
@@ -189,6 +191,8 @@
         </div>
         <div class="card set-card">
           <h3><i data-icon="gear"></i>System</h3>
+          <div class="set-row"><div><b>Denkaufwand der KI</b><small id="effort-hint">Offizielle Stufen von Qwen 3.8 – ohne Token-Limit. Modelle, die nicht denken, ignorieren das.</small></div>
+            <div class="seg" id="effort-seg"><button data-effort="off" title="Antwortet sofort, ohne Überlegen">Aus</button><button data-effort="low" title="Kurz überlegen, direkt zum Ergebnis">low</button><button data-effort="medium" title="Ausgewogen">medium</button><button data-effort="xhigh" title="Gründlich: Annahmen prüfen, Alternativen abwägen (Qwen-Standard)">xhigh</button></div></div>
           <div class="set-row"><div><b>Rechenleistung</b><small>Nur bei lokaler KI: schont Akku und hält den Mac leise</small></div>
             <div class="seg" id="policy-seg"><button data-policy="always">Immer</button><button data-policy="plugged">Nur am Netzteil</button><button data-policy="plugged_idle">Netzteil &amp; Mac ruht</button></div></div>
           <div class="set-row"><div><b>Beim Anmelden starten</b><small>Läuft dann unauffällig in der Menüleiste</small></div><label class="switch"><input type="checkbox" id="s-login"><span></span></label></div>
@@ -248,9 +252,10 @@
       <section class="wz-page" data-step="3">
         <h1>Texterkennung für Scans</h1>
         <p class="wz-lead">PDFs mit Text werden direkt gelesen. Für eingescannte Seiten:</p>
-        <div class="wz-choices two" id="wz-ocr">
+        <div class="wz-choices" id="wz-ocr">
           <button data-ocr="vision"><b>Apple Vision</b><span>In macOS eingebaut, sehr schnell (unter 1 Sekunde pro Seite). Empfohlen.</span></button>
           <button data-ocr="glm"><b>GLM-OCR</b><span>Genauer bei Tabellen, braucht das Modell „glm-ocr“ (ca. 8 Sekunden pro Seite, auf einem Server schneller).</span></button>
+          <button data-ocr="direct"><b>Direkt an die KI</b><span>Die Seiten gehen als Bilder an das Analysemodell – beste Qualität mit einem starken Server (z. B. Qwen 3.8).</span></button>
         </div>
       </section>
       <section class="wz-page" data-step="4">

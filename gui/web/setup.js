@@ -21,7 +21,7 @@ async function openWizard() {
   WZ.settings = settings; WZ.providers = providers;
   const ep = settings.endpoints.llm;
   Object.assign(WZ, { step: 0, provider: ep.provider, url: ep.url, key: ep.api_key || '', connected: false,
-                      ocr: settings.ocr_mode || 'vision', incoming: settings.incoming_dirs[0] || '', output: settings.output_dir,
+                      ocr: settings.analysis_mode === 'vision' ? 'direct' : settings.ocr_mode || 'vision', incoming: settings.incoming_dirs[0] || '', output: settings.output_dir,
                       chosen: { llm: ep.model, embedding: settings.endpoints.embedding.model, ocr: settings.endpoints.ocr.model } });
   if (!providers.installed[WZ.provider] && WZ.provider !== 'custom') {
     WZ.provider = providers.installed.lmstudio ? 'lmstudio' : providers.installed.ollama ? 'ollama' : WZ.provider;
@@ -167,7 +167,7 @@ function renderSummary() {
   const eps = wizardEndpoints();
   $('#wz-summary').innerHTML = `
     <div>${icon('sparkle')}<span>KI: <b>${WZ.providers.providers[WZ.provider].label}</b> · ${esc(eps.llm.model)}</span></div>
-    <div>${icon('scan')}<span>Texterkennung: <b>${WZ.ocr === 'glm' ? 'GLM-OCR' : 'Apple Vision'}</b></span></div>
+    <div>${icon('scan')}<span>Texterkennung: <b>${{ glm: 'GLM-OCR', direct: 'Direkt an die KI (Bilder)' }[WZ.ocr] || 'Apple Vision'}</b></span></div>
     <div>${icon('inbox')}<span>Eingang: <code>${esc(WZ.incoming)}</code></span></div>
     <div>${icon('folder')}<span>Ablage: <code>${esc(WZ.output)}</code></span></div>`;
 }
@@ -181,7 +181,8 @@ $('#wz-next').addEventListener('click', async () => {
   if (WZ.step === 4 && (!WZ.incoming || !WZ.output)) { toast('Bitte beide Ordner wählen', { kind: 'info' }); return; }
   if (WZ.step < WZ.steps.length - 1) { WZ.step++; renderWizard(); return; }
   try {
-    await api('save_settings', { incoming_dirs: [WZ.incoming], output_dir: WZ.output, ocr_mode: WZ.ocr, endpoints: wizardEndpoints(),
+    await api('save_settings', { incoming_dirs: [WZ.incoming], output_dir: WZ.output, endpoints: wizardEndpoints(),
+                                 ocr_mode: WZ.ocr === 'direct' ? 'vision' : WZ.ocr, analysis_mode: WZ.ocr === 'direct' ? 'vision' : 'ocr',
                                  own_names: $('#wz-own').value.split('\n').map(x => x.trim()).filter(Boolean) });
     await api('set_login_item', $('#wz-login').checked);
     $('#wizard').classList.remove('show');

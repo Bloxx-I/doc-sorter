@@ -542,6 +542,8 @@ async function loadSettings() {
   renderIncoming();
   $('#s-output').value = s.output_dir;
   $('#s-own').value = (s.own_names || []).join('\n');
+  $$('#analysis-seg button').forEach(b => b.classList.toggle('on', b.dataset.analysis === (s.analysis_mode || 'ocr')));
+  $$('#effort-seg button').forEach(b => b.classList.toggle('on', b.dataset.effort === (s.reasoning_effort || 'xhigh')));
   $$('#embedded-seg button').forEach(b => b.classList.toggle('on', b.dataset.embedded === (s.embedded_text || 'never')));
   $$('#policy-seg button').forEach(b => b.classList.toggle('on', b.dataset.policy === (s.compute_policy || 'always')));
   renderEndpoints();
@@ -613,6 +615,17 @@ $('#ep-copy').addEventListener('click', () => {
     Object.assign(ep, { provider: src.provider, url: src.url, api_key: src.api_key });
   }
   renderEndpoints();
+});
+$('#effort-seg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $$('#effort-seg button').forEach(x => x.classList.toggle('on', x === b));
+  const hints = { off: 'Antwortet sofort – am schnellsten, am wenigsten genau.', low: 'Kurz überlegen, direkt zum Ergebnis.',
+                  medium: 'Ausgewogen zwischen Tempo und Sorgfalt.', xhigh: 'Gründlich: prüft Annahmen und wägt Alternativen ab (Qwen-Standard).' };
+  $('#effort-hint').textContent = hints[b.dataset.effort] + ' Kein Token-Limit.';
+});
+$('#analysis-seg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $$('#analysis-seg button').forEach(x => x.classList.toggle('on', x === b));
 });
 $('#embedded-seg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -698,6 +711,8 @@ $('#settings-save').addEventListener('click', async () => {
       own_names: $('#s-own').value.split('\n').map(x => x.trim()).filter(Boolean),
       compute_policy: $('#policy-seg button.on')?.dataset.policy || 'always',
       embedded_text: $('#embedded-seg button.on')?.dataset.embedded || 'never',
+      analysis_mode: $('#analysis-seg button.on')?.dataset.analysis || 'ocr',
+      reasoning_effort: $('#effort-seg button.on')?.dataset.effort || 'xhigh',
       ocr_mode: $('#ocr-mode-seg button.on')?.dataset.mode || 'vision',
     });
     toast('Einstellungen gespeichert');

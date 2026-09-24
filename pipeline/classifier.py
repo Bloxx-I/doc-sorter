@@ -1,5 +1,6 @@
 """One LM Studio call extracts metadata used for naming and folder suggestions."""
 
+import base64
 import json
 import re
 from datetime import date, datetime
@@ -179,50 +180,92 @@ def normalise_sender(sender, known=()):
     return name
 
 
+FIELDS = {"date": {"type": ["string", "null"]}, "sender": {"type": ["string", "null"]},
+          "type": {"type": ["string", "null"]}, "keyword": {"type": ["string", "null"]}}
+
+
+def _schema(with_text=False):
+    props = dict(FIELDS, **({"text": {"type": "string"}} if with_text else {}))
+    return {"type": "json_schema", "json_schema": {"name": "document", "strict": True, "schema": {
+        "type": "object", "additionalProperties": False, "required": list(props), "properties": props}}}
+
+
+def _instructions(own_names, with_text=False):
+    return (
+        "Antworte ausschließlich mit einem JSON-Objekt mit diesen Feldern:\n"
+        "- date: das Ausstellungsdatum des Dokuments als JJJJ-MM-TT (bei Rechnungen das Rechnungsdatum, "
+        "nicht Fälligkeit, Zahlungsziel, Liefer- oder Leistungsdatum), oder null\n"
+        "- sender: wer das Dokument ausgestellt hat (Firma, Behörde oder Person), kurz und ohne Rechtsform, oder null\n"
+        "- type: die Dokumentart in einem deutschen Wort, z.B. Rechnung, Vertrag, Angebot, Bescheid, Kontoauszug, Brief\n"
+        "- keyword: worum es in DIESEM Dokument geht, 1-3 Wörter, nur aus dem Inhalt abgeleitet, oder null\n"
+        + ("- text: der vollständige Text aller Seiten, genau abgeschrieben (Zeilen mit \\n getrennt)\n" if with_text else "")
+        + "Der Absender steht im Briefkopf, Logo oder in der Fußzeile. Der Empfänger steht im Adressfeld "
+        "(nach 'An', 'TO:', 'Rechnungsadresse', 'Lieferanschrift') – der Empfänger ist NIE der Absender.\n"
+        + (f"Empfänger dieses Dokuments ist: {'; '.join(own_names)}. Diese(r) ist also nicht der Absender.\n"
+           if own_names else "")
+        + "Übernimm nichts, was nicht im Dokument steht.\n")
+
+
+# Official reasoning levels of Qwen 3.8 (from its chat template): xhigh is the model's default.
+REASONING_EFFORTS = ("off", "low", "medium", "xhigh")
+
+
 class DocumentClassifier:
-    def __init__(self, endpoint):
-        self.endpoint = endpoint   # pipeline.ai.Endpoint (LM Studio, Ollama or a remote server)
+    def __init__(self, endpoint, effort="xhigh"):
+        self.endpoint = endpoint     # pipeline.ai.Endpoint (LM Studio, Ollama or a remote server)
+        if effort is True or effort is None:
+            effort = "xhigh"
+        elif effort is False:
+            effort = "off"
+        self.effort = effort if effort in REASONING_EFFORTS else "xhigh"
 
-    SCHEMA = {"type": "json_schema", "json_schema": {"name": "document", "strict": True, "schema": {
-        "type": "object", "additionalProperties": False, "required": ["date", "sender", "type", "keyword"],
-        "properties": {"date": {"type": ["string", "null"]}, "sender": {"type": ["string", "null"]},
-                       "type": {"type": ["string", "null"]}, "keyword": {"type": ["string", "null"]}}}}}
+    @property
+    def thinking(self):
+        return self.effort != "off"
 
-    def _chat(self, prompt, structured=True):
-        # Reasoning models (Qwen3 etc.) would otherwise spend the token budget "thinking" before the JSON;
-        # extracting four fields needs no reasoning. Servers that don't know the flag ignore it.
-        options = {"temperature": 0, "max_tokens": 800, "chat_template_kwargs": {"enable_thinking": False}}
+    def _chat(self, content, structured=True, with_text=False):
+        options = {"temperature": 0.2 if self.thinking else 0}
+        if self.thinking:
+            # No token limit: the model may think as long as it needs. The level goes in as a chat-template
+            # variable – llama.cpp hands it to Qwen's template; LM Studio/Ollama simply ignore it.
+            options["chat_template_kwargs"] = {"enable_thinking": True, "reasoning_effort": self.effort}
+        else:
+            options.update(max_tokens=8000 if with_text else 800, chat_template_kwargs={"enable_thinking": False})
         if structured:
-            options["response_format"] = self.SCHEMA
-        return self.endpoint.chat([{"role": "user", "content": prompt}], timeout=180, **options)
+            options["response_format"] = _schema(with_text)
+        return self.endpoint.chat([{"role": "user", "content": content}], timeout=1800 if self.thinking else 300, **options)
+
+    def _ask(self, content, with_text=False):
+        try:
+            try:
+                return self._chat(content, with_text=with_text)
+            except error.HTTPError as exc:
+                if exc.code in (401, 403, 404):
+                    raise
+                return self._chat(content, structured=False, with_text=with_text)
+        except (error.URLError, TimeoutError) as exc:
+            raise RuntimeError(f"KI nicht erreichbar ({self.endpoint.describe()}): {exc}") from exc
+
+    def classify_images(self, pages_png, known_senders=(), own_names=()):
+        """Send the page images straight to a vision model: fields and transcription in one call."""
+        content = [{"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(p).decode()}}
+                   for p in pages_png]
+        content.append({"type": "text", "text": f"Das sind {len(pages_png)} Seite(n) eines deutschen Dokuments.\n"
+                                                + _instructions(own_names, with_text=True)})
+        result = self._finish(self._ask(content, with_text=True), None, known_senders, own_names, with_text=True)
+        return result
 
     def classify_and_rename(self, document_text, known_senders=(), own_names=()):
         if not document_text.strip():
             raise ValueError("Kein Dokumenttext erkannt; bitte OCR-Einstellung prüfen")
         # No example keywords and no list of earlier senders in the prompt: small models copy them into
         # unrelated documents. Known senders are matched afterwards, deterministically (normalise_sender).
-        prompt = (
-            "Lies das folgende deutsche Dokument und antworte ausschließlich mit einem JSON-Objekt mit diesen Feldern:\n"
-            "- date: das Ausstellungsdatum des Dokuments als JJJJ-MM-TT (bei Rechnungen das Rechnungsdatum, "
-            "nicht Fälligkeit, Zahlungsziel oder Leistungszeitraum), oder null\n"
-            "- sender: wer das Dokument ausgestellt hat (Firma, Behörde oder Person), kurz und ohne Rechtsform, oder null\n"
-            "- type: die Dokumentart in einem Wort, z.B. Rechnung, Vertrag, Angebot, Bescheid, Kontoauszug, Brief\n"
-            "- keyword: worum es in DIESEM Dokument geht, 1-3 Wörter, nur aus dem Inhalt abgeleitet, oder null\n"
-            "Der Absender steht im Briefkopf, Logo oder in der Fußzeile. Der Empfänger steht im Adressfeld "
-            "(nach 'An', 'TO:', 'Rechnungsadresse', 'Lieferanschrift') – der Empfänger ist NIE der Absender.\n"
-            + (f"Empfänger dieses Dokuments ist: {'; '.join(own_names)}. Diese(r) ist also nicht der Absender.\n"
-               if own_names else "") +
-            "Übernimm nichts, was nicht im Dokument steht.\n\n"
-            "Dokument:\n\"\"\"\n" + document_text[:12000] + "\n\"\"\""
-        )
-        try:
-            try:
-                answer = self._chat(prompt)
-            except error.HTTPError:
-                answer = self._chat(prompt, structured=False)
-        except (error.URLError, TimeoutError) as exc:
-            raise RuntimeError(f"KI nicht erreichbar ({self.endpoint.describe()}): {exc}") from exc
-        match = re.search(r"\{.*\}", answer, re.S)
+        prompt = ("Lies das folgende deutsche Dokument.\n" + _instructions(own_names)
+                  + "\nDokument:\n\"\"\"\n" + document_text[:12000] + "\n\"\"\"")
+        return self._finish(self._ask(prompt), document_text, known_senders, own_names)
+
+    def _finish(self, answer, document_text, known_senders, own_names, with_text=False):
+        match = re.search(r"\{.*\}", answer or "", re.S)
         if not match:
             raise ValueError("Das Analysemodell hat kein JSON zurückgegeben")
         try:
@@ -231,6 +274,9 @@ class DocumentClassifier:
             raise ValueError("Das Analysemodell hat ungültiges JSON zurückgegeben") from exc
         result = {key: raw.get(key).strip() if isinstance(raw.get(key), str) and raw.get(key).strip() else None
                   for key in ("date", "sender", "type", "keyword")}
+        if with_text:
+            document_text = str(raw.get("text") or "").replace("\\n", "\n").strip()
+            result["text"] = document_text
         if result["date"]:
             try:
                 if not plausible(date.fromisoformat(result["date"])):
@@ -238,7 +284,7 @@ class DocumentClassifier:
             except ValueError:
                 result["date"] = None
         # The model sometimes answers with a date that is nowhere in the text; only trust it if it is there.
-        if result["date"] and not _date_in_text(result["date"], document_text):
+        if result["date"] and document_text and not _date_in_text(result["date"], document_text):
             result["date"] = None
         if not result["sender"] or is_own(result["sender"], own_names):
             result["sender"] = letterhead_sender(document_text, own_names)

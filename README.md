@@ -56,10 +56,17 @@ oder Ollama eingetragen und läuft nicht, startet der Sortierer es selbst (`lms 
 | **Apple Vision** (Standard) | ~0,2 s/Seite | in macOS eingebaut, kein Download |
 | GLM-OCR | ~8 s/Seite lokal | am genauesten (Tabellen); auf einem Server schneller |
 | PaddleOCR | ~25 s/Aufruf | optional, lädt seine Modelle bei jedem Aufruf |
+| **Direkt an die KI** | ~1–2 min/Dokument (Qwen 3.8, gründlich) | keine OCR: die Seiten gehen als Bilder an ein Modell, das Bilder versteht – es liest Angaben und Text selbst |
 
 Jede Seite wird per OCR gelesen – eingebettete Textschichten alter Scanner sind oft falsch. Optional (Einstellungen →
 Texterkennung → „Nur digitale PDFs“) wird der exakte Text von direkt erzeugten PDFs genutzt. Fällt eine Erkennung aus,
 übernimmt die nächste.
+
+### Denkaufwand
+
+Unter **Einstellungen → System → Denkaufwand der KI** lassen sich die offiziellen Stufen von Qwen 3.8 wählen:
+**xhigh** (Standard, gründlich), **medium**, **low** oder **Aus**. Es gibt kein Token-Limit – das Modell denkt so
+lange, wie es braucht. Modelle ohne Denkmodus ignorieren die Einstellung.
 
 ## Bedienung
 
