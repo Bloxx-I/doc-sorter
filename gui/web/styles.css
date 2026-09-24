@@ -663,3 +663,16 @@ tr:hover .row-actions .icon-btn { opacity: 1; }
 .wz-summary code { overflow: hidden; text-overflow: ellipsis; }
 .wz-foot { display: flex; align-items: center; justify-content: space-between; padding: 16px 42px 22px; border-top: 1px solid var(--line); }
 .wz-foot .btn.primary { height: 38px; padding: 0 22px; font-size: 14px; }
+
+textarea { font: inherit; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--panel); padding: 8px 10px; outline: none; resize: vertical; width: 100%; }
+textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft-2); }
+.wz-own { display: flex; flex-direction: column; gap: 4px; margin-top: 18px; }
+.wz-own small { color: var(--muted); font-size: 11.5px; margin-bottom: 4px; }
+.q-item.waiting { opacity: .75; }
+.q-count { min-width: 22px; height: 22px; border-radius: 11px; background: var(--line); color: var(--text-2); font-size: 11px; font-weight: 700; display: grid; place-items: center; padding: 0 6px; }
+.hidden-field { display: none !important; }
+.row-btns { display: flex; gap: 8px; justify-self: start; }
+.component-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-bottom: 12px; }
+.component-row .muted { font-weight: 400; margin-left: 2px; }
+.comp-status { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.comp-status .bad { color: var(--bad); }

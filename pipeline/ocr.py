@@ -67,9 +67,27 @@ def paddle_ocr_pages(image_paths, python, timeout=600):
     return json.loads(done.stdout.rsplit("@@RESULT@@", 1)[1])
 
 
+def _looks_scanned(page, embedded):
+    """Mostly one big image and little real text: a scan with a stamp-like text layer."""
+    if len(embedded) >= 600:
+        return False
+    area = abs(page.rect)
+    covered = sum(abs(pymupdf.Rect(info["bbox"]) & page.rect) for info in page.get_image_info())
+    return area > 0 and covered / area > 0.5
+
+
+def tesseract_cmd():
+    """Finder-launched apps don't get Homebrew in PATH, so look there explicitly."""
+    for path in (shutil.which("tesseract"), "/opt/homebrew/bin/tesseract", "/usr/local/bin/tesseract"):
+        if path and Path(path).is_file():
+            return path
+    return None
+
+
 def tesseract_page(image_path):
     import pytesseract
     from PIL import Image
+    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd() or "tesseract"
     with Image.open(image_path) as image:
         return pytesseract.image_to_string(image, lang="deu+eng")
 
@@ -89,13 +107,16 @@ def ocr_pipeline(pdf_path, config, progress=None, log=None):
     with pymupdf.open(pdf_path) as document:
         if not document.is_pdf or document.needs_pass:
             raise ValueError("Nur unverschlüsselte PDF-Dateien werden unterstützt")
+        # "never" (default): every page is OCR'd – text layers from old scanners are often wrong.
+        # "digital": text of born-digital pages (no page-sized scan image) is exact, so it is used as is.
+        use_embedded = config.get("embedded_text", "never") == "digital"
         for page in document:
-            embedded = page.get_text("text").strip()
-            if len(embedded) >= MIN_EMBEDDED_CHARS:
+            embedded = page.get_text("text").strip() if use_embedded else ""
+            if use_embedded and len(embedded) >= MIN_EMBEDDED_CHARS and not _looks_scanned(page, embedded):
                 pages.append(embedded)
                 methods.add("PDF-Text")
             else:
-                pages.append("")
+                pages.append("")   # a scan's own text layer is never used
                 scans.append((len(pages) - 1, page.get_pixmap(dpi=200, alpha=False).tobytes("png")))
 
     remaining = scans
@@ -109,17 +130,24 @@ def ocr_pipeline(pdf_path, config, progress=None, log=None):
             continue
         if done is None:
             continue
+        recognised = set()
         for (index, _png), text in zip(remaining, done):
-            pages[index] = text.strip()
+            text = text.strip()
+            if len(text) > len(pages[index]):
+                pages[index] = text
+            if len(text) >= MIN_EMBEDDED_CHARS:
+                recognised.add(index)
         methods.add(ENGINE_LABELS[engine])
-        remaining = [(i, png) for i, png in remaining if not pages[i]]
-    if remaining and shutil.which("tesseract"):
+        remaining = [(i, png) for i, png in remaining if i not in recognised]
+    if remaining and tesseract_cmd():
         progress("Tesseract")
         with tempfile.TemporaryDirectory(prefix="doc-sorter-") as tmp:
             for index, png in remaining:
                 path = Path(tmp) / f"page_{index}.png"
                 path.write_bytes(png)
-                pages[index] = tesseract_page(path).strip()
+                text = tesseract_page(path).strip()
+                if len(text) > len(pages[index]):
+                    pages[index] = text
         methods.add("Tesseract")
     elif remaining and not any(pages):
         raise RuntimeError("Keine OCR verfügbar – bitte in den Einstellungen eine Texterkennung einrichten")
@@ -172,4 +200,4 @@ def ocr_status(config):
     except Exception:
         glm = False
     return {"vision": vision_available(), "glm": glm, "paddle": paddle_python(config).exists(),
-            "tesseract": bool(shutil.which("tesseract"))}
+            "tesseract": bool(tesseract_cmd())}

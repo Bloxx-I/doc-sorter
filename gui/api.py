@@ -4,12 +4,18 @@ Every public method is callable from JavaScript (pywebview js_api, or /api/<name
 and returns JSON-serialisable data. Private attributes keep pywebview from exposing internals.
 """
 
+import re
+import shutil
 import subprocess
 import threading
 from pathlib import Path
 
+REPO = "Bloxx-I/doc-sorter"
+ROOT = Path(__file__).resolve().parent.parent
+SUPPORT = Path.home() / "Library" / "Application Support" / "Dokumenten-Sortierer"
+INSTALL_CMD = f"curl -fsSL https://raw.githubusercontent.com/{REPO}/main/install.sh | bash"
 ICLOUD = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
-SETTING_KEYS = ("incoming_dirs", "output_dir", "ocr_mode", "endpoints")
+SETTING_KEYS = ("incoming_dirs", "output_dir", "ocr_mode", "endpoints", "own_names", "compute_policy", "embedded_text")
 
 
 class Api:
@@ -138,7 +144,7 @@ class Api:
                 "setup_pending": bool(config.get("setup_pending"))}
 
     def save_settings(self, values):
-        self._service.reconfigure({key: values[key] if key in ("incoming_dirs", "endpoints") else str(values[key]).strip()
+        self._service.reconfigure({key: values[key] if key in ("incoming_dirs", "endpoints", "own_names") else str(values[key]).strip()
                                    for key in SETTING_KEYS if key in values})
         self._service.config.pop("setup_pending", None)
         self._service.warm_up()
@@ -197,6 +203,81 @@ class Api:
         from gui.menubar import set_login_item
         set_login_item(bool(enabled))
         return self.login_item()
+
+    # ------------------------------------------------------------ updates
+    def version(self):
+        try:
+            return (ROOT / "VERSION").read_text().strip()
+        except OSError:
+            return "0"
+
+    def check_update(self):
+        """Compare the local VERSION with the one on GitHub."""
+        from urllib import request as urlrequest
+        current = self.version()
+        try:
+            with urlrequest.urlopen(f"https://raw.githubusercontent.com/{REPO}/main/VERSION", timeout=6) as response:
+                latest = response.read().decode().strip()
+        except Exception as exc:
+            return {"current": current, "latest": None, "available": False, "error": str(exc)}
+        key = lambda v: tuple(int(x) for x in re.findall(r"\d+", v)) or (0,)
+        installed = ROOT.is_relative_to(SUPPORT)
+        return {"current": current, "latest": latest, "available": key(latest) > key(current),
+                "installed": installed, "command": INSTALL_CMD}
+
+    def install_update(self):
+        """Run the installer detached: it quits this app, updates the code and starts the new version."""
+        if not ROOT.is_relative_to(SUPPORT):
+            raise ValueError("Entwicklungs-Checkout: bitte mit 'git pull' aktualisieren")
+        log = SUPPORT / "update.log"
+        subprocess.Popen(["/bin/bash", "-c", f"{INSTALL_CMD} > '{log}' 2>&1"], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+
+    # ------------------------------------------------------------ optional OCR engines
+    def install_component(self, name):
+        """Install PaddleOCR (own Python 3.12 env via uv) or Tesseract (Homebrew) in the background."""
+        from pipeline.ocr import paddle_python, tesseract_cmd
+        self._pull = {"running": True, "model": name, "status": "Starte …", "fraction": None, "error": None, "done": []}
+
+        def run():
+            try:
+                if name == "paddle":
+                    uv = next((p for p in (Path.home() / ".local/bin/uv", Path(shutil.which("uv") or "")) if p.is_file()), None)
+                    if not uv:
+                        raise RuntimeError("uv fehlt – bitte den Installer einmal erneut ausführen")
+                    target = SUPPORT / "paddle-venv"
+                    self._pull["status"] = "Python-Umgebung anlegen"
+                    self._run([str(uv), "venv", "--allow-existing", "--python", "3.12", str(target)])
+                    self._pull["status"] = "PaddleOCR laden (ca. 1 GB, einige Minuten)"
+                    self._run([str(uv), "pip", "install", "--python", str(target / "bin/python"),
+                               "paddlepaddle>=3,<4", "paddleocr>=3,<4"])
+                    self._service.config["paddle_python"] = str(target / "bin/python")
+                    self._service.reconfigure({})
+                elif name == "tesseract":
+                    brew = next((p for p in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew") if Path(p).is_file()), None)
+                    if not brew:
+                        self.open_url("https://brew.sh/de/")
+                        raise RuntimeError("Tesseract braucht Homebrew – die Anleitung ist im Browser geöffnet")
+                    self._pull["status"] = "brew install tesseract tesseract-lang"
+                    self._run([brew, "install", "tesseract", "tesseract-lang"])
+                if name == "paddle" and not paddle_python(self._service.config).exists() or \
+                   name == "tesseract" and not tesseract_cmd():
+                    raise RuntimeError("Installation abgeschlossen, aber nicht gefunden")
+                self._pull["done"].append(name)
+                self._pull["status"] = "Fertig"
+            except Exception as exc:
+                self._pull["error"] = str(exc)
+            finally:
+                self._pull["running"] = False
+        threading.Thread(target=run, daemon=True).start()
+        return True
+
+    @staticmethod
+    def _run(cmd):
+        done = subprocess.run(cmd, capture_output=True, text=True)
+        if done.returncode != 0:
+            raise RuntimeError(((done.stderr or done.stdout).strip().splitlines() or ["Fehler"])[-1][:240])
 
     def pull_status(self):
         return getattr(self, "_pull", {"running": False})

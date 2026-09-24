@@ -26,12 +26,33 @@ from storage.database import SortHistoryDB
 
 DEFAULTS = {
     "ocr_mode": "vision",
+    "compute_policy": "always",   # always | plugged | plugged_idle  (only matters for local AI)
+    "own_names": [],
+    "embedded_text": "never",     # never = always OCR | digital = use text of born-digital PDFs              # the user's names/companies: recipients, never senders
     "paddle_python": "paddle-venv/bin/python",
     "database": "storage/sort_history.db",
 }
 LEGACY_KEYS = ("lm_base_url", "llm_model", "ocr_model", "embedding_model")
 YEAR = re.compile(r"^(19|20)\d{2}$")
 MONTH = re.compile(r"^(0[1-9]|1[0-2])$")
+
+
+def on_ac_power():
+    try:
+        out = subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True, timeout=5).stdout
+        return "AC Power" in out.splitlines()[0] if out else True
+    except Exception:
+        return True
+
+
+def idle_seconds():
+    """Seconds since the last keyboard/mouse input (HIDIdleTime)."""
+    try:
+        out = subprocess.run(["ioreg", "-c", "IOHIDSystem", "-d", "4"], capture_output=True, text=True, timeout=5).stdout
+        match = re.search(r'"HIDIdleTime"\s*=\s*(\d+)', out)
+        return int(match.group(1)) / 1e9 if match else 1e9
+    except Exception:
+        return 1e9
 
 
 class Handler(FileSystemEventHandler):
@@ -79,6 +100,7 @@ class DocumentService:
         self.in_flight = {}
         self.observer = None
         self.paused_until = None   # None = running, float = epoch seconds, math.inf = until resumed
+        self._stopping = False
 
     @property
     def incoming_dirs(self):
@@ -110,6 +132,7 @@ class DocumentService:
         self.observer.start()
 
     def stop(self):
+        self._stopping = True
         if self.observer:
             self.observer.stop()
             self.observer.join(timeout=5)
@@ -220,12 +243,14 @@ class DocumentService:
                 raise TimeoutError("Datei wurde innerhalb von 60 Sekunden nicht vollständig geschrieben")
             if self.db.has_open_source(source):
                 return
+            if not self._wait_for_resources(source):
+                return
             self._stage(source, "Text wird gelesen")
             text, method = ocr_pipeline(source, self.config, progress=lambda m: self._stage(source, m),
                                         log=lambda m: self.db.event("ocr_fallback", source, detail=m))
             self._stage(source, "KI analysiert")
             model = DocumentClassifier(Endpoint.from_config(self.config, "llm"))
-            info = model.classify_and_rename(text, self.db.known_senders())
+            info = model.classify_and_rename(text, self.db.known_senders(), self.config.get("own_names", []))
             stat = os.stat(source)
             if (stat.st_size, stat.st_mtime_ns) != fingerprint:
                 raise RuntimeError("Quelldatei hat sich während der Analyse geändert; bitte erneut scannen")
@@ -245,6 +270,42 @@ class DocumentService:
         finally:
             with self.lock:
                 self.in_flight.pop(source, None)
+
+    # ---------------------------------------------------------------- power / idle policy
+    WAITING = ("Wartet auf Netzteil", "Wartet, bis der Mac ruht")
+
+    def uses_local_ai(self):
+        endpoints = [Endpoint.from_config(self.config, "llm")]
+        if self.config.get("ocr_mode") == "glm":
+            endpoints.append(Endpoint.from_config(self.config, "ocr"))
+        return any(is_local(e.url) for e in endpoints)
+
+    def resources_ok(self):
+        """(ok, reason) – heavy local AI only runs on AC power (and, if chosen, while the Mac is idle)."""
+        policy = self.config.get("compute_policy", "always")
+        if policy == "always" or not self.uses_local_ai():
+            return True, None
+        if not on_ac_power():
+            return False, self.WAITING[0]
+        if policy == "plugged_idle" and idle_seconds() < 120:
+            return False, self.WAITING[1]
+        return True, None
+
+    def _wait_for_resources(self, source):
+        while True:
+            ok, reason = self.resources_ok()
+            if ok:
+                return True
+            self._stage(source, reason)
+            for _ in range(15):
+                if self._stopping or not os.path.exists(source):
+                    return False
+                time.sleep(1)
+
+    def busy(self):
+        """Documents that are actually being worked on (not merely waiting for power/idle)."""
+        with self.lock:
+            return any(stage not in self.WAITING for stage in self.in_flight.values())
 
     @staticmethod
     def _index_text(info, text):

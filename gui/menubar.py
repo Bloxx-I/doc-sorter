@@ -71,6 +71,12 @@ class MenuTarget(NSObject):
         set_login_item(not login_item_enabled())
         item.setState_(AppKit.NSControlStateValueOn if login_item_enabled() else AppKit.NSControlStateValueOff)
 
+    def checkUpdate_(self, _):
+        self.owner.check_update(interactive=True)
+
+    def installUpdate_(self, _):
+        self.owner.api.install_update()
+
     def quit_(self, _):
         self.owner.quit()
 
@@ -79,9 +85,10 @@ class MenuTarget(NSObject):
 
 
 class MenuBar:
-    def __init__(self, window, service):
+    def __init__(self, window, service, api=None):
         self.window = window
         self.service = service
+        self.api = api
         self.quitting = False
         self.item = None
 
@@ -128,6 +135,7 @@ class MenuBar:
         self.open_output = self._add(menu, "Ablage im Finder", "reveal:")
         menu.addItem_(AppKit.NSMenuItem.separatorItem())
         self._add(menu, "Einstellungen …", "showView:", ",", view="settings")
+        self.update_item = self._add(menu, "Nach Updates suchen …", "checkUpdate:")
         login = self._add(menu, "Beim Anmelden starten", "toggleLogin:")
         login.setState_(AppKit.NSControlStateValueOn if login_item_enabled() else AppKit.NSControlStateValueOff)
         menu.addItem_(AppKit.NSMenuItem.separatorItem())
@@ -139,6 +147,7 @@ class MenuBar:
         self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
             1.5, self.target, "tick:", None, True)
         self.refresh()
+        self.check_update()
 
     def _add(self, menu, title, action, key="", view=None):
         item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, action, key)
@@ -157,7 +166,8 @@ class MenuBar:
         processing = self.service.processing()
         paused = self.service.paused
         self.item.button().setImage_(self.icons["pause" if paused else "run"])
-        self.item.button().setTitle_(f" {pending}" if pending else "")
+        badge = (f" {pending}" if pending else "") + (" ↑" if getattr(self, "update_available", False) else "")
+        self.item.button().setTitle_(badge)
         self.resume_item.setHidden_(not paused)
         self.pause_item.setHidden_(paused)
         if paused:
@@ -181,6 +191,29 @@ class MenuBar:
                 self._add(submenu, folder.replace(str(Path.home()), "~"), "reveal:", view=folder)
             self.incoming_item.setSubmenu_(submenu)
         self.open_output.setRepresentedObject_(self.service.config["output_dir"])
+
+    # ------------------------------------------------------------ updates
+    def check_update(self, interactive=False):
+        """Background check; an available update turns the menu entry into 'Update installieren'."""
+        import threading
+
+        def run():
+            res = self.api.check_update() if self.api else {}
+            def apply():
+                if res.get("available") and res.get("installed"):
+                    self.update_item.setTitle_(f"Update auf {res['latest']} installieren")
+                    self.update_item.setAction_("installUpdate:")
+                    self.update_available = True
+                elif interactive:
+                    alert = AppKit.NSAlert.alloc().init()
+                    alert.setMessageText_("Dokumenten-Sortierer")
+                    alert.setInformativeText_(
+                        f"Version {res.get('current')} ist aktuell." if not res.get("available") else
+                        f"Version {res['latest']} ist verfügbar. Entwicklungs-Checkout: bitte 'git pull'.")
+                    AppKit.NSApp.activateIgnoringOtherApps_(True)
+                    alert.runModal()
+            AppHelper.callAfter(apply)
+        threading.Thread(target=run, daemon=True).start()
 
     # ------------------------------------------------------------ window handling
     def show(self, view=None):

@@ -16,8 +16,20 @@ Der Installer fragt, womit die KI rechnen soll (**Ollama** wird bei Bedarf autom
 ein **eigener Server**), legt die App unter `~/Programme/Dokumenten-Sortierer` an und startet sie. Ein Assistent
 führt dann durch Modelle, Texterkennung und Ordner. Voraussetzung: macOS 13 oder neuer, ca. 4 GB freier Platz für die Modelle.
 
-- **Update:** dieselbe Zeile nochmal ausführen – Einstellungen und Verlauf bleiben erhalten.
-- **Mit PaddleOCR** (zusätzliche Texterkennung, ~1 GB): `curl -fsSL https://raw.githubusercontent.com/Bloxx-I/doc-sorter/main/install.sh | bash -s -- --with-paddle`
+## Update
+
+Am einfachsten in der App: **Menüleisten-Symbol → „Update auf … installieren“** (erscheint automatisch, wenn es eine
+neue Version gibt – dann steht ein ↑ neben dem Symbol) oder **Einstellungen → System → Nach Updates suchen**.
+
+Oder im Terminal – das ist derselbe Befehl wie bei der Installation; Einstellungen und Verlauf bleiben erhalten:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bloxx-I/doc-sorter/main/install.sh | bash
+```
+
+## Weitere Befehle
+
+- **Mit PaddleOCR** (zusätzliche Texterkennung, ~1 GB – geht auch später per Knopf unter Einstellungen → Texterkennung): `curl -fsSL https://raw.githubusercontent.com/Bloxx-I/doc-sorter/main/install.sh | bash -s -- --with-paddle`
 - **Entfernen:** `curl -fsSL https://raw.githubusercontent.com/Bloxx-I/doc-sorter/main/install.sh | bash -s -- --uninstall`
 
 ## Im Alltag
@@ -27,6 +39,10 @@ führt dann durch Modelle, Texterkennung und Ordner. Voraussetzung: macOS 13 ode
   bis zum Fortsetzen), Eingang prüfen, Einstellungen, **Beim Anmelden starten**, Beenden.
 - Kommt ein neues PDF, springt das Fenster nach vorne. Name prüfen, Ziel anklicken, <kbd>Enter</kbd>.
 - **Mehrere Eingangsordner** unter Einstellungen → Ordner. „Rückgängig“ legt die Datei dorthin zurück, woher sie kam.
+- **Viele Dokumente auf einmal:** Der Sortierer arbeitet den ganzen Stapel im Hintergrund ab und meldet sich erst,
+  wenn alles analysiert ist – du sortierst dann in einem Rutsch, während Nachzügler weiter im Hintergrund laufen.
+- **Meine Namen & Firmen** (Einstellungen → Ordner): an wen die Post geht – wird nie als Absender verwendet.
+- **Rechenleistung** (Einstellungen → System): lokale KI nur am Netzteil bzw. nur, wenn der Mac gerade ruht.
 
 ## KI: lokal oder auf einem schnellen Server
 
@@ -41,7 +57,9 @@ oder Ollama eingetragen und läuft nicht, startet der Sortierer es selbst (`lms 
 | GLM-OCR | ~8 s/Seite lokal | am genauesten (Tabellen); auf einem Server schneller |
 | PaddleOCR | ~25 s/Aufruf | optional, lädt seine Modelle bei jedem Aufruf |
 
-PDFs mit eingebettetem Text werden immer direkt gelesen (ohne OCR). Fällt eine Erkennung aus, übernimmt die nächste.
+Jede Seite wird per OCR gelesen – eingebettete Textschichten alter Scanner sind oft falsch. Optional (Einstellungen →
+Texterkennung → „Nur digitale PDFs“) wird der exakte Text von direkt erzeugten PDFs genutzt. Fällt eine Erkennung aus,
+übernimmt die nächste.
 
 ## Bedienung
 

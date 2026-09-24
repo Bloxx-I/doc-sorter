@@ -169,6 +169,8 @@
           <div class="set-row"><div><b>Ablageverzeichnis</b><small>Wurzel der Ordnerstruktur – gerne in iCloud Drive.</small></div>
             <div class="path-input"><input id="s-output" spellcheck="false"><button class="btn" data-choose="s-output">Wählen …</button></div></div>
           <div class="set-note" id="icloud-note"></div>
+          <div class="set-row top"><div><b>Meine Namen &amp; Firmen</b><small>An wen die Post geht – wird nie als Absender genommen. Eine Zeile pro Name.</small></div>
+            <textarea id="s-own" rows="3" spellcheck="false" placeholder="Barbara Muster&#10;Muster GmbH"></textarea></div>
         </div>
         <div class="card set-card">
           <h3><i data-icon="sparkle"></i>KI-Rechenleistung</h3>
@@ -179,12 +181,19 @@
         <div class="card set-card">
           <h3><i data-icon="scan"></i>Texterkennung</h3>
           <div class="pipeline" id="pipeline"></div>
+          <div class="component-row" id="components"></div>
           <div class="set-row"><div><b>Erste Wahl bei Scans</b><small>PDF-Text wird immer zuerst direkt gelesen; fällt eine Erkennung aus, übernimmt die nächste</small></div>
             <div class="seg" id="ocr-mode-seg"><button data-mode="vision">Apple Vision · schnell</button><button data-mode="glm">GLM-OCR · genau</button><button data-mode="paddle">PaddleOCR</button></div></div>
+          <div class="set-row"><div><b>Eingebetteter PDF-Text</b><small>Textschichten alter Scanner sind oft falsch. „Nur digitale PDFs“ nutzt exakten Text von Rechnungen, die direkt als PDF erstellt wurden.</small></div>
+            <div class="seg" id="embedded-seg"><button data-embedded="never">Nie – immer OCR</button><button data-embedded="digital">Nur digitale PDFs</button></div></div>
         </div>
         <div class="card set-card">
           <h3><i data-icon="gear"></i>System</h3>
+          <div class="set-row"><div><b>Rechenleistung</b><small>Nur bei lokaler KI: schont Akku und hält den Mac leise</small></div>
+            <div class="seg" id="policy-seg"><button data-policy="always">Immer</button><button data-policy="plugged">Nur am Netzteil</button><button data-policy="plugged_idle">Netzteil &amp; Mac ruht</button></div></div>
           <div class="set-row"><div><b>Beim Anmelden starten</b><small>Läuft dann unauffällig in der Menüleiste</small></div><label class="switch"><input type="checkbox" id="s-login"><span></span></label></div>
+          <div class="set-row"><div><b>Version <span id="app-version"></span></b><small id="update-info">Updates kommen direkt von GitHub</small></div>
+            <div class="row-btns"><button class="btn small" id="update-check"><i data-icon="refresh"></i>Nach Updates suchen</button><button class="btn small primary hidden-field" id="update-install"><i data-icon="open"></i>Jetzt aktualisieren</button></div></div>
           <div class="set-row"><div><b>Einrichtungsassistent</b><small>Alles Schritt für Schritt neu einrichten</small></div><button class="btn small" id="rerun-setup"><i data-icon="sparkle"></i>Assistent starten</button></div>
         </div>
         <div class="settings-actions"><span class="muted" id="settings-msg"></span><button class="btn primary" id="settings-save"><i data-icon="check"></i>Speichern</button></div>
@@ -250,6 +259,8 @@
         <div class="wz-folder"><div><i data-icon="inbox"></i><b>Eingang</b><small>z. B. der Ordner, in den dein Scanner speichert</small></div><code id="wz-in"></code><button class="btn" data-wz-choose="in">Wählen …</button></div>
         <div class="wz-folder"><div><i data-icon="folder"></i><b>Ablage</b><small>deine Ordnerstruktur, gern in iCloud Drive</small></div><code id="wz-out"></code><button class="btn" data-wz-choose="out">Wählen …</button></div>
         <button class="btn small" id="wz-icloud"><i data-icon="cloud"></i>Ablage in iCloud Drive/Dokumente</button>
+        <label class="wz-own"><b>Dein Name / deine Firma</b><small>damit du nie als Absender deiner eigenen Post erkannt wirst (eine Zeile pro Name)</small>
+          <textarea id="wz-own" rows="2" spellcheck="false" placeholder="Barbara Muster"></textarea></label>
       </section>
       <section class="wz-page" data-step="5">
         <h1>Fertig!</h1>

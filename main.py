@@ -51,15 +51,19 @@ def json_str(value):
 
 
 def watch_for_new_documents(service, menubar, stop):
-    """Pops the window up (and posts a notification) whenever a new proposal is ready."""
-    seen = {p["id"] for p in service.db.pending()}
+    """Pops the window up once per batch: only after every queued document has been analysed,
+    so twenty scans cause one prompt instead of twenty interruptions."""
+    announced = {p["id"] for p in service.db.pending()}
     while not stop.wait(1.5):
-        pending = service.db.pending()
-        new = [p for p in pending if p["id"] not in seen]
-        seen = {p["id"] for p in pending}
-        if new:
+        pending = {p["id"]: p for p in service.db.pending()}
+        announced &= set(pending)
+        new = [pending[i] for i in pending if i not in announced]
+        if new and not service.busy():
+            announced |= {p["id"] for p in new}
             menubar.show("inbox")
-            notify("Neues Dokument", f"{new[0]['filename']} wartet auf Ablage")
+            text = (f"{new[0]['filename']} wartet auf Ablage" if len(new) == 1
+                    else f"{len(new)} Dokumente sind fertig analysiert und warten auf Ablage")
+            notify("Dokumenten-Sortierer", text)
 
 
 SUPPORT = Path.home() / "Library" / "Application Support" / "Dokumenten-Sortierer"
@@ -148,7 +152,7 @@ def main():
         width=1480, height=940, min_size=(1100, 700), background_color="#f4f4f6",
         transparent=True, vibrancy=True, text_select=True, hidden=hidden)
     api._attach(window)
-    menubar = MenuBar(window, service)
+    menubar = MenuBar(window, service, api)
     stop = threading.Event()
     window.events.shown += lambda: style_native_window(window)
     window.events.closing += menubar.on_closing   # red button hides, the app keeps watching

@@ -94,9 +94,14 @@ async function poll() {
 
 function renderQueue() {
   const q = $('#queue');
-  const proc = S.processing.map(p => `
+  // One line for the document being worked on, one summary line for the rest of the batch.
+  const active = S.processing.filter(p => p.stage !== 'Wartet');
+  const waiting = S.processing.length - active.length;
+  const proc = active.map(p => `
     <div class="q-item processing"><span class="spinner"></span>
-      <div class="q-text"><div class="q-name">${esc(p.name)}</div><div class="q-sub">${esc(p.stage)}</div></div></div>`).join('');
+      <div class="q-text"><div class="q-name">${esc(p.name)}</div><div class="q-sub">${esc(p.stage)}</div></div></div>`).join('')
+    + (waiting ? `<div class="q-item waiting"><span class="q-count">${waiting}</span>
+      <div class="q-text"><div class="q-name">weitere in der Warteschlange</div><div class="q-sub">werden im Hintergrund analysiert</div></div></div>` : '');
   const pend = S.pending.map((p, i) => `
     <button class="q-item ${p.id === S.currentId ? 'active' : ''}" data-id="${p.id}">
       <span class="q-dot"></span>
@@ -531,16 +536,22 @@ const TASK_INFO = {
 
 async function loadSettings() {
   const [s, h, p] = await Promise.all([api('settings'), api('health'), api('providers')]);
+  S.settingsEmbedded = s.embedded_text || 'never';
   S.health = h; S.providers = p; S.endpoints = JSON.parse(JSON.stringify(s.endpoints));
   S.incomingDirs = [...s.incoming_dirs];
   renderIncoming();
   $('#s-output').value = s.output_dir;
+  $('#s-own').value = (s.own_names || []).join('\n');
+  $$('#embedded-seg button').forEach(b => b.classList.toggle('on', b.dataset.embedded === (s.embedded_text || 'never')));
+  $$('#policy-seg button').forEach(b => b.classList.toggle('on', b.dataset.policy === (s.compute_policy || 'always')));
   renderEndpoints();
   $$('#ocr-mode-seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === (s.ocr_mode || 'vision')));
   $('#icloud-note').innerHTML = s.icloud ? `${icon('cloud')}<span>iCloud Drive gefunden: <code>${esc(s.icloud)}</code></span><button class="btn small" id="use-icloud">Ablage in iCloud Drive</button>` : '';
   $('#use-icloud')?.addEventListener('click', () => { $('#s-output').value = s.icloud + '/Dokumente'; });
   $('#s-login').checked = await api('login_item');
+  $('#app-version').textContent = await api('version');
   renderPipeline(h);
+  renderComponents(h);
 }
 
 function renderEndpoints() {
@@ -603,13 +614,67 @@ $('#ep-copy').addEventListener('click', () => {
   }
   renderEndpoints();
 });
+$('#embedded-seg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $$('#embedded-seg button').forEach(x => x.classList.toggle('on', x === b));
+});
+$('#policy-seg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $$('#policy-seg button').forEach(x => x.classList.toggle('on', x === b));
+});
 $('#s-login').addEventListener('change', e => api('set_login_item', e.target.checked));
 $('#rerun-setup').addEventListener('click', () => openWizard());
+
+function renderComponents(h) {
+  const missing = [['paddle', 'PaddleOCR installieren', '~1 GB, eigene Python-Umgebung', h.paddle],
+                   ['tesseract', 'Tesseract installieren', 'über Homebrew', h.tesseract]].filter(c => !c[3]);
+  $('#components').innerHTML = missing.map(([key, label, sub]) =>
+    `<button class="btn small" data-component="${key}">${icon('open')}${label}<span class="muted">· ${sub}</span></button>`).join('')
+    + '<span class="comp-status" id="comp-status"></span>';
+}
+$('#components').addEventListener('click', async e => {
+  const b = e.target.closest('[data-component]'); if (!b) return;
+  $$('#components [data-component]').forEach(x => x.disabled = true);
+  await api('install_component', b.dataset.component);
+  const timer = setInterval(async () => {
+    const st = await api('pull_status');
+    $('#comp-status').innerHTML = st.error ? `<span class="bad">${esc(st.error)}</span>` : `<span class="spinner"></span> ${esc(st.status || '')}`;
+    if (!st.running) {
+      clearInterval(timer);
+      if (!st.error) toast(`${b.dataset.component === 'paddle' ? 'PaddleOCR' : 'Tesseract'} ist installiert`);
+      loadSettings();
+    }
+  }, 1000);
+});
+
+async function checkUpdate(silent = false) {
+  const res = await api('check_update');
+  S.update = res;
+  if (!silent) {
+    $('#update-info').textContent = res.error ? `GitHub nicht erreichbar (${res.error})`
+      : res.available ? `Neue Version ${res.latest} verfügbar` : `Aktuell – ${res.current} ist die neueste Version`;
+    $('#update-install').classList.toggle('hidden-field', !res.available);
+  }
+  if (res.available && silent) {
+    toast(`Update auf Version ${res.latest} verfügbar`, { kind: 'info', action: 'Aktualisieren', onAction: installUpdate, ms: 15000 });
+  }
+  return res;
+}
+async function installUpdate() {
+  if (S.update && !S.update.installed) {
+    toast('Entwicklungs-Version: bitte im Projektordner <code>git pull</code> ausführen', { kind: 'info', ms: 8000 });
+    return;
+  }
+  toast('Update wird installiert – der Sortierer startet gleich neu …', { kind: 'info', ms: 20000 });
+  await api('install_update');
+}
+$('#update-check').addEventListener('click', () => checkUpdate(false));
+$('#update-install').addEventListener('click', installUpdate);
 
 function renderPipeline(h) {
   const step = (name, sub, ok) => `<div class="pipe-step ${ok ? 'ok' : 'off'}"><span class="pipe-dot"></span><div><b>${name}</b><small>${sub}</small></div></div>`;
   $('#pipeline').innerHTML = [
-    step('PDF-Text', 'eingebetteter Text', true),
+    step('PDF-Text', S.settingsEmbedded === 'digital' ? 'nur digitale PDFs' : 'aus – immer OCR', S.settingsEmbedded === 'digital'),
     step('Apple Vision', h.vision ? 'eingebaut · ~0,2 s/Seite' : 'nicht verfügbar', h.vision),
     step('GLM-OCR', h.glm ? 'bereit · genau' : 'Modell nicht verfügbar', h.glm),
     step('PaddleOCR', h.paddle ? 'lokal · bereit' : 'nicht installiert', h.paddle),
@@ -630,6 +695,9 @@ $('#settings-save').addEventListener('click', async () => {
   try {
     await api('save_settings', {
       incoming_dirs: S.incomingDirs, output_dir: $('#s-output').value, endpoints: readEndpoints(),
+      own_names: $('#s-own').value.split('\n').map(x => x.trim()).filter(Boolean),
+      compute_policy: $('#policy-seg button.on')?.dataset.policy || 'always',
+      embedded_text: $('#embedded-seg button.on')?.dataset.embedded || 'never',
       ocr_mode: $('#ocr-mode-seg button.on')?.dataset.mode || 'vision',
     });
     toast('Einstellungen gespeichert');
@@ -684,6 +752,8 @@ function boot() {
             { kind: 'info', action: 'Einrichten', onAction: () => openWizard(), ms: 20000 });
     }
   });
+  setTimeout(() => checkUpdate(true), 8000);
+  setInterval(() => checkUpdate(true), 12 * 3600 * 1000);
   setInterval(poll, 1500);
   setInterval(refreshHealth, 20000);
 }

@@ -141,6 +141,7 @@ function renderFolders() {
   $('#wz-in').textContent = WZ.incoming || '– noch nicht gewählt –';
   $('#wz-out').textContent = WZ.output || '– noch nicht gewählt –';
   $('#wz-icloud').style.display = WZ.settings.icloud ? '' : 'none';
+  if (!$('#wz-own').value) $('#wz-own').value = (WZ.settings.own_names || []).join('\n');
 }
 $$('[data-wz-choose]').forEach(b => b.addEventListener('click', async () => {
   const key = b.dataset.wzChoose === 'in' ? 'incoming' : 'output';
@@ -180,7 +181,8 @@ $('#wz-next').addEventListener('click', async () => {
   if (WZ.step === 4 && (!WZ.incoming || !WZ.output)) { toast('Bitte beide Ordner wählen', { kind: 'info' }); return; }
   if (WZ.step < WZ.steps.length - 1) { WZ.step++; renderWizard(); return; }
   try {
-    await api('save_settings', { incoming_dirs: [WZ.incoming], output_dir: WZ.output, ocr_mode: WZ.ocr, endpoints: wizardEndpoints() });
+    await api('save_settings', { incoming_dirs: [WZ.incoming], output_dir: WZ.output, ocr_mode: WZ.ocr, endpoints: wizardEndpoints(),
+                                 own_names: $('#wz-own').value.split('\n').map(x => x.trim()).filter(Boolean) });
     await api('set_login_item', $('#wz-login').checked);
     $('#wizard').classList.remove('show');
     toast('Eingerichtet – leg einfach ein PDF in den Eingang!', { ms: 7000 });
