@@ -189,7 +189,9 @@ class DocumentClassifier:
                        "type": {"type": ["string", "null"]}, "keyword": {"type": ["string", "null"]}}}}}
 
     def _chat(self, prompt, structured=True):
-        options = {"temperature": 0, "max_tokens": 350}
+        # Reasoning models (Qwen3 etc.) would otherwise spend the token budget "thinking" before the JSON;
+        # extracting four fields needs no reasoning. Servers that don't know the flag ignore it.
+        options = {"temperature": 0, "max_tokens": 800, "chat_template_kwargs": {"enable_thinking": False}}
         if structured:
             options["response_format"] = self.SCHEMA
         return self.endpoint.chat([{"role": "user", "content": prompt}], timeout=180, **options)
