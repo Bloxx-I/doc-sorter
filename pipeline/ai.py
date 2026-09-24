@@ -20,11 +20,18 @@ PROVIDERS = {
 }
 
 # Sensible model names per provider (Ollama uses its own library names).
-DEFAULT_MODELS = {
-    "lmstudio": {"llm": "phi-3.5-mini-instruct", "ocr": "glm-ocr", "embedding": "text-embedding-nomic-embed-text-v1.5"},
-    "ollama": {"llm": "phi3.5", "ocr": "glm-ocr", "embedding": "nomic-embed-text"},
-    "custom": {"llm": "phi-3.5-mini-instruct", "ocr": "glm-ocr", "embedding": "text-embedding-nomic-embed-text-v1.5"},
-}
+def _defaults():
+    """Analysis model = the catalogue tier that fits this Mac (Phi is no longer the default)."""
+    from pipeline.models import TIERS, recommended_tier
+    tier = next(t for t in TIERS if t["id"] == recommended_tier())
+    return {
+        "lmstudio": {"llm": tier["lmstudio"]["model"], "ocr": "glm-ocr", "embedding": "text-embedding-nomic-embed-text-v1.5"},
+        "ollama": {"llm": tier["ollama"]["model"], "ocr": "glm-ocr", "embedding": "nomic-embed-text"},
+        "custom": {"llm": "", "ocr": "", "embedding": ""},
+    }
+
+
+DEFAULT_MODELS = _defaults()
 TASKS = ("llm", "ocr", "embedding")
 
 _start_lock = threading.Lock()

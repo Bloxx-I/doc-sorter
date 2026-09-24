@@ -210,6 +210,15 @@ def _instructions(own_names, with_text=False):
 REASONING_EFFORTS = ("off", "low", "medium", "xhigh")
 
 
+def _http_detail(exc):
+    try:
+        body = json.loads(exc.read() or b"{}")
+        message = body.get("error", {}).get("message") if isinstance(body.get("error"), dict) else body.get("error")
+        return f"HTTP {exc.code}: {str(message)[:160]}" if message else f"HTTP {exc.code}"
+    except Exception:
+        return f"HTTP {exc.code}"
+
+
 class DocumentClassifier:
     def __init__(self, endpoint, effort="xhigh"):
         self.endpoint = endpoint     # pipeline.ai.Endpoint (LM Studio, Ollama or a remote server)
@@ -242,7 +251,14 @@ class DocumentClassifier:
             except error.HTTPError as exc:
                 if exc.code in (401, 403, 404):
                     raise
-                return self._chat(content, structured=False, with_text=with_text)
+                return self._chat(content, structured=False, with_text=with_text)   # server without JSON schema
+        except error.HTTPError as exc:
+            detail = _http_detail(exc)
+            if exc.code in (401, 403):
+                raise RuntimeError(f"Zugriff verweigert – API-Schlüssel prüfen ({self.endpoint.describe()})") from exc
+            if with_text:
+                raise RuntimeError(f"Das Modell „{self.endpoint.model}“ kann offenbar keine Bilder lesen ({detail})") from exc
+            raise RuntimeError(f"Das Modell hat die Anfrage abgelehnt: {detail}") from exc
         except (error.URLError, TimeoutError) as exc:
             raise RuntimeError(f"KI nicht erreichbar ({self.endpoint.describe()}): {exc}") from exc
 

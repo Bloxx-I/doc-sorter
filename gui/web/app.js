@@ -577,7 +577,9 @@ function renderEndpoints() {
         <input class="ep-key ${ep.provider === 'custom' ? '' : 'hidden-field'}" value="${esc(ep.api_key || '')}" placeholder="API-Schlüssel (optional)" spellcheck="false">
         <select class="ep-model">${task === 'ocr' ? `<option value="" ${!ep.model ? 'selected' : ''}>– nicht verwenden –</option>` : ''}${models.map(m => `<option ${m === ep.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
         <button class="btn small ep-test">${icon('refresh')}Verbinden</button>
-      </div></div>`;
+      </div>
+      ${ep.provider !== 'custom' ? `<div class="ep-pull"><input class="ep-pull-name" spellcheck="false" placeholder="Weiteres Modell laden, z. B. ${ep.provider === 'ollama' ? 'qwen3.6:35b-a3b' : 'qwen/qwen3.6-35b-a3b'}">
+        <button class="btn small ep-pull-btn">${icon('open')}Laden</button><span class="ep-pull-state"></span></div>` : ''}</div>`;
   }).join('');
 }
 
@@ -600,6 +602,30 @@ $('#endpoints').addEventListener('click', async e => {
     ep.url = S.providers.providers[ep.provider].url;
     ep.model = S.providers.defaults[ep.provider][task];
     renderEndpoints();
+    return;
+  }
+  if (e.target.closest('.ep-pull-btn')) {
+    const name = el.querySelector('.ep-pull-name').value.trim(), state = el.querySelector('.ep-pull-state');
+    if (!name) return;
+    state.innerHTML = '<span class="spinner"></span> prüfe …';
+    if (await api('check_model', ep.provider, name) === false) {
+      state.innerHTML = `<span class="bad">gibt es bei ${S.providers.providers[ep.provider].label} nicht</span>`; return;
+    }
+    await api('pull_models', { provider: ep.provider, url: ep.url }, [name]);
+    const timer = setInterval(async () => {
+      const st = await api('pull_status');
+      state.innerHTML = st.error ? `<span class="bad">${esc(st.error)}</span>`
+        : `<span class="spinner"></span> ${esc(st.status || '')}${st.fraction != null ? ' · ' + Math.round(st.fraction * 100) + '%' : ''}`;
+      if (!st.running) {
+        clearInterval(timer);
+        if (st.error) return;
+        const res = await api('test_endpoint', ep, false);
+        S.health.endpoints[task] = { reachable: res.ok, models: res.models, remote: res.remote, ready: true };
+        ep.model = res.models.find(m => m === name || m.split(':')[0] === name.split(':')[0] || m.endsWith('/' + name.split('/').pop())) || name;
+        renderEndpoints();
+        toast(`${esc(name)} ist geladen und ausgewählt – „Speichern“ nicht vergessen`);
+      }
+    }, 800);
     return;
   }
   if (e.target.closest('.ep-test')) {

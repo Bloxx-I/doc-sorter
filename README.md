@@ -64,6 +64,21 @@ Jede Seite wird per OCR gelesen – eingebettete Textschichten alter Scanner sin
 Texterkennung → „Nur digitale PDFs“) wird der exakte Text von direkt erzeugten PDFs genutzt. Fällt eine Erkennung aus,
 übernimmt die nächste.
 
+### Welches Modell?
+
+Der Assistent schlägt je nach Arbeitsspeicher eine Größe vor – alle lesen Dokumente auch direkt als Bild:
+
+| Größe | Mac | Ollama | LM Studio | Empfohlener Weg |
+| --- | --- | --- | --- | --- |
+| Klein | ab 8 GB | `qwen3.5:4b` (3,4 GB) | `qwen/qwen3.5-4b` | Apple-Texterkennung + KI (< 1 s pro Dokument) |
+| Mittel | ab 16 GB | `gemma4:e4b` (9,6 GB) | `google/gemma-4-e4b` | Dokument direkt an die KI |
+| Groß | ab 32 GB | `gemma4:26b` (18,6 GB) | `google/gemma-4-26b-a4b` | Dokument direkt an die KI |
+
+Jedes andere Modell geht auch: im Assistenten „Oder ein eigenes Modell“ bzw. in den Einstellungen „Weiteres Modell
+laden“ – der Name wird vorher bei Ollama bzw. im LM-Studio-Hub geprüft. Im Test mit echten Rechnungen hatte
+Gemma 4 E4B alle Daten und Absender richtig (≈30 s pro Dokument direkt als Bild, ≈15 s über OCR), Qwen 3.5 4B
+ebenfalls – über die Texterkennung in unter einer Sekunde; Bilder direkt lesen ist für so kleine Modelle zu viel.
+
 ### Denkaufwand
 
 Unter **Einstellungen → System → Denkaufwand der KI** lassen sich die offiziellen Stufen von Qwen 3.8 wählen:

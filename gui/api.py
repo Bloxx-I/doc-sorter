@@ -162,6 +162,20 @@ class Api:
         return {"providers": PROVIDERS, "defaults": DEFAULT_MODELS, "installed": installed_providers(),
                 "setup_pending": bool(self._service.config.get("setup_pending"))}
 
+    def model_catalog(self, provider):
+        from pipeline.models import catalogue
+        return catalogue(provider)
+
+    def check_model(self, provider, name):
+        """True/False whether `name` can be downloaded for this provider (None = offline, unknown)."""
+        from pipeline.models import model_exists
+        return model_exists(provider, name)
+
+    def model_reads_images(self, endpoint, model):
+        from pipeline.ai import Endpoint
+        from pipeline.models import supports_images
+        return supports_images(Endpoint(**endpoint), model)
+
     def test_endpoint(self, endpoint, start=True):
         """Connect to an endpoint (starting LM Studio/Ollama if needed) and list its models."""
         from pipeline.ai import Endpoint, is_local

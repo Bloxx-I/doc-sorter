@@ -245,8 +245,14 @@
         <div class="wz-status" id="wz-status"></div>
       </section>
       <section class="wz-page" data-step="2">
-        <h1>Modelle</h1>
-        <p class="wz-lead">Diese Modelle werden gebraucht. Fehlende lädt der Sortierer für dich herunter – das dauert beim ersten Mal ein paar Minuten.</p>
+        <h1>Welches Modell?</h1>
+        <p class="wz-lead" id="wz-models-lead">Größere Modelle sind genauer, brauchen aber mehr Arbeitsspeicher. Die passende Größe für deinen Mac ist vorausgewählt.</p>
+        <div class="wz-tiers" id="wz-tiers"></div>
+        <div class="wz-custom" id="wz-custom">
+          <label>Oder ein eigenes Modell <input id="wz-custom-name" spellcheck="false" placeholder="z. B. qwen3.6:35b-a3b oder qwen/qwen3.6-35b-a3b"></label>
+          <button class="btn" id="wz-custom-check">Prüfen</button>
+          <span class="wz-custom-state" id="wz-custom-state"></span>
+        </div>
         <div class="wz-models" id="wz-models"></div>
         <div class="wz-progress" id="wz-progress"><div class="bar"><i></i></div><span></span></div>
         <button class="btn primary" id="wz-pull"><i data-icon="open"></i>Fehlende Modelle laden</button>

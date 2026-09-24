@@ -7,19 +7,13 @@ const WZ = {
   ocr: 'vision', incoming: '', output: '', settings: null, providers: null,
 };
 
-const RECOMMENDED = {
-  lmstudio: [{ task: 'llm', model: 'phi-3.5-mini-instruct', label: 'Analyse & Umbenennung', size: '2,4 GB' },
-             { task: 'embedding', model: 'text-embedding-nomic-embed-text-v1.5', label: 'Suche', size: '80 MB' },
-             { task: 'ocr', model: 'glm-ocr', label: 'Genaue Texterkennung (optional)', size: '1,5 GB', optional: true }],
-  ollama: [{ task: 'llm', model: 'phi3.5', label: 'Analyse & Umbenennung', size: '2,2 GB' },
-           { task: 'embedding', model: 'nomic-embed-text', label: 'Suche', size: '270 MB' },
-           { task: 'ocr', model: 'glm-ocr', label: 'Genaue Texterkennung (optional)', size: '1,5 GB', optional: true }],
-};
+const RECOMMENDED = {};   // filled per provider from the model catalogue (model_catalog)
 
 async function openWizard() {
   const [settings, providers] = await Promise.all([api('settings'), api('providers')]);
   WZ.settings = settings; WZ.providers = providers;
   const ep = settings.endpoints.llm;
+  WZ.catalogue = null; WZ.ocrTouched = false;
   Object.assign(WZ, { step: 0, provider: ep.provider, url: ep.url, key: ep.api_key || '', connected: false,
                       ocr: settings.analysis_mode === 'vision' ? 'direct' : settings.ocr_mode || 'vision', incoming: settings.incoming_dirs[0] || '', output: settings.output_dir,
                       chosen: { llm: ep.model, embedding: settings.endpoints.embedding.model, ocr: settings.endpoints.ocr.model } });
@@ -63,7 +57,7 @@ $('#wz-providers').addEventListener('click', e => {
   const b = e.target.closest('[data-provider]'); if (!b) return;
   WZ.provider = b.dataset.provider;
   WZ.url = WZ.providers.providers[WZ.provider].url;
-  WZ.connected = false;
+  WZ.connected = false; WZ.catalogue = null;
   renderProviders();
 });
 $('#wz-test').addEventListener('click', wizardConnect);
@@ -80,36 +74,72 @@ async function wizardConnect() {
 
 /* ---- step 2: models */
 function hasModel(name) {
-  const base = n => n.toLowerCase().split(':')[0];
-  return WZ.models.some(m => m === name || base(m) === base(name) || m.toLowerCase().includes(base(name)));
+  const base = n => n.toLowerCase().split(':')[0].split('@')[0];
+  return WZ.models.some(m => m === name || base(m) === base(name) || base(m).endsWith('/' + base(name)) || base(name).endsWith('/' + base(m)));
 }
-function renderModels() {
+function chosenModels() {
+  const embed = WZ.catalogue?.embedding;
+  const list = [{ task: 'llm', model: WZ.llmModel, label: 'Analyse & Umbenennung', size: WZ.llmSize || '' }];
+  if (embed) list.push({ task: 'embedding', model: embed, label: 'Suche (Embedding)', size: '≈0,3 GB' });
+  return list;
+}
+async function renderModels() {
   if (WZ.provider === 'custom') {
-    // A remote server: pick from what it offers.
+    $('#wz-tiers').innerHTML = ''; $('#wz-custom').style.display = 'none';
+    $('#wz-models-lead').textContent = 'Wähle aus den Modellen, die dein Server anbietet.';
     $('#wz-models').innerHTML = ['llm', 'embedding', 'ocr'].map(task => {
       const opts = WZ.models.filter(TASK_INFO[task].filter);
       return `<label class="wz-model pick"><div><b>${TASK_INFO[task].title}</b><small>${TASK_INFO[task].sub}</small></div>
-        <select data-task="${task}">${task === 'ocr' ? '<option value="">– nicht verwenden –</option>' : ''}${opts.map(m =>
+        <select data-task="${task}">${task !== 'llm' ? '<option value="">– nicht verwenden –</option>' : ''}${opts.map(m =>
           `<option ${m === WZ.chosen[task] ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>`;
     }).join('');
     $('#wz-pull').style.display = 'none';
     return;
   }
-  const list = RECOMMENDED[WZ.provider];
-  $('#wz-models').innerHTML = list.map(m => {
+  $('#wz-custom').style.display = '';
+  if (!WZ.catalogue || WZ.catalogue.provider !== WZ.provider) {
+    WZ.catalogue = { ...(await api('model_catalog', WZ.provider)), provider: WZ.provider };
+    const tier = WZ.catalogue.tiers.find(t => t.id === WZ.catalogue.recommended);
+    Object.assign(WZ, { tier: tier.id, llmModel: tier.model, llmSize: tier.size, llmVision: tier.vision, llmDirect: tier.direct });
+  }
+  const c = WZ.catalogue;
+  $('#wz-models-lead').textContent = `Größere Modelle sind genauer, brauchen aber mehr Arbeitsspeicher. Dein Mac hat ${c.ram} GB – die passende Größe ist vorausgewählt.`;
+  $('#wz-tiers').innerHTML = c.tiers.map(t => `
+    <button data-tier="${t.id}" class="${WZ.tier === t.id ? 'on' : ''} ${t.fits ? '' : 'toobig'}">
+      <b>${t.label}</b>${t.id === c.recommended ? '<em class="ok">passt zu deinem Mac</em>' : !t.fits ? `<em class="warn">braucht ${t.min_ram} GB</em>` : ''}
+      <span>${t.text}</span><code>${esc(t.model)} · ${t.size}</code>
+      ${hasModel(t.model) ? '<em class="ok">bereits geladen</em>' : ''}</button>`).join('');
+  $('#wz-models').innerHTML = chosenModels().map(m => {
     const have = hasModel(m.model);
-    return `<label class="wz-model ${have ? 'have' : ''}"><input type="checkbox" data-model="${m.model}" data-task="${m.task}" ${have || !m.optional ? 'checked' : ''} ${have ? 'disabled' : ''}>
-      <div><b>${m.label}</b><small><code>${m.model}</code> · ${m.size}</small></div>
-      <em>${have ? `${icon('check')}vorhanden` : 'fehlt'}</em></label>`;
+    return `<div class="wz-model ${have ? 'have' : ''}"><div><b>${m.label}</b><small><code>${esc(m.model)}</code>${m.size ? ' · ' + m.size : ''}</small></div>
+      <em>${have ? `${icon('check')}vorhanden` : 'wird geladen'}</em></div>`;
   }).join('');
-  const missing = list.filter(m => !hasModel(m.model));
-  $('#wz-pull').style.display = missing.length ? '' : 'none';
+  $('#wz-pull').style.display = chosenModels().some(m => !hasModel(m.model)) ? '' : 'none';
 }
+$('#wz-tiers').addEventListener('click', e => {
+  const b = e.target.closest('[data-tier]'); if (!b) return;
+  const t = WZ.catalogue.tiers.find(x => x.id === b.dataset.tier);
+  Object.assign(WZ, { tier: t.id, llmModel: t.model, llmSize: t.size, llmVision: t.vision, llmDirect: t.direct });
+  WZ.ocrTouched = false;
+  $('#wz-custom-state').textContent = '';
+  renderModels();
+});
+$('#wz-custom-check').addEventListener('click', async () => {
+  const name = $('#wz-custom-name').value.trim();
+  if (!name) return;
+  $('#wz-custom-state').innerHTML = '<span class="spinner"></span>';
+  const exists = hasModel(name) || await api('check_model', WZ.provider, name);
+  if (exists === false) { $('#wz-custom-state').innerHTML = `<span class="bad">${icon('alert')}Gibt es bei ${WZ.providers.providers[WZ.provider].label} nicht</span>`; return; }
+  Object.assign(WZ, { tier: 'custom', llmModel: name, llmSize: '', llmVision: null, llmDirect: null });
+  $('#wz-custom-state').innerHTML = `<span class="ok">${icon('check')}${exists === null ? 'Übernommen (offline nicht prüfbar)' : 'Gefunden – übernommen'}</span>`;
+  renderModels();
+});
+$('#wz-custom-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); $('#wz-custom-check').click(); } });
 $('#wz-models').addEventListener('change', e => {
   if (e.target.dataset.task && e.target.tagName === 'SELECT') WZ.chosen[e.target.dataset.task] = e.target.value;
 });
 $('#wz-pull').addEventListener('click', async () => {
-  const models = $$('#wz-models input:checked:not(:disabled)').map(i => i.dataset.model);
+  const models = chosenModels().filter(m => !hasModel(m.model)).map(m => m.model);
   if (!models.length) return;
   $('#wz-pull').disabled = true;
   $('#wz-progress').classList.add('show');
@@ -131,10 +161,26 @@ $('#wz-pull').addEventListener('click', async () => {
 });
 
 /* ---- step 3: OCR */
-function renderOcr() {
+async function renderOcr() {
+  if (WZ.provider !== 'custom' && WZ.llmVision === null && WZ.llmModel) {
+    WZ.llmVision = await api('model_reads_images', { provider: WZ.provider, url: WZ.url, api_key: WZ.key }, installedName(WZ.llmModel));
+  }
+  const vision = WZ.provider === 'custom' ? true : WZ.llmVision !== false;
+  const direct = $('#wz-ocr [data-ocr="direct"]');
+  direct.disabled = !vision;
+  const recommendDirect = vision && WZ.llmDirect !== false;
+  direct.querySelector('span').textContent = !vision ? 'Dieses Modell kann keine Bilder lesen.'
+    : recommendDirect ? 'Die Seiten gehen als Bilder an das Analysemodell – ohne OCR, beste Qualität. Empfohlen für dieses Modell.'
+    : 'Möglich, aber für kleine Modelle nicht empfohlen – Apple Vision + KI ist hier schneller und zuverlässiger.';
+  if (!WZ.ocrTouched) WZ.ocr = recommendDirect ? 'direct' : 'vision';
+  if (!vision && WZ.ocr === 'direct') WZ.ocr = 'vision';
   $$('#wz-ocr button').forEach(b => b.classList.toggle('on', b.dataset.ocr === WZ.ocr));
 }
-$('#wz-ocr').addEventListener('click', e => { const b = e.target.closest('[data-ocr]'); if (b) { WZ.ocr = b.dataset.ocr; renderOcr(); } });
+function installedName(name) {
+  const base = n => n.toLowerCase().split(':')[0].split('@')[0];
+  return WZ.models.find(m => m === name || base(m) === base(name) || base(m).endsWith('/' + base(name)) || base(name).endsWith('/' + base(m))) || name;
+}
+$('#wz-ocr').addEventListener('click', e => { const b = e.target.closest('[data-ocr]'); if (b && !b.disabled) { WZ.ocr = b.dataset.ocr; WZ.ocrTouched = true; renderOcr(); } });
 
 /* ---- step 4: folders */
 function renderFolders() {
@@ -152,16 +198,15 @@ $('#wz-icloud').addEventListener('click', () => { WZ.output = WZ.settings.icloud
 
 /* ---- step 5: summary + save */
 function wizardEndpoints() {
-  const defaults = WZ.providers.defaults[WZ.provider];
-  const pick = task => {
-    if (WZ.provider === 'custom') return WZ.chosen[task] || '';
-    const rec = RECOMMENDED[WZ.provider].find(m => m.task === task);
-    const found = WZ.models.find(m => m === rec.model || m.toLowerCase().split(':')[0] === rec.model.toLowerCase());
-    if (task === 'ocr' && !found && WZ.ocr !== 'glm') return '';
-    return found || rec.model || defaults[task];
-  };
   const base = { provider: WZ.provider, url: WZ.url, api_key: WZ.key };
-  return { llm: { ...base, model: pick('llm') }, ocr: { ...base, model: pick('ocr') }, embedding: { ...base, model: pick('embedding') } };
+  if (WZ.provider === 'custom') {
+    return { llm: { ...base, model: WZ.chosen.llm || '' }, ocr: { ...base, model: WZ.chosen.ocr || '' },
+             embedding: { ...base, model: WZ.chosen.embedding || '' } };
+  }
+  const embed = WZ.catalogue?.embedding || '';
+  return { llm: { ...base, model: installedName(WZ.llmModel) },
+           ocr: { ...base, model: WZ.ocr === 'glm' ? installedName('glm-ocr') : '' },
+           embedding: { ...base, model: embed ? installedName(embed) : '' } };
 }
 function renderSummary() {
   const eps = wizardEndpoints();
