@@ -674,7 +674,16 @@ function boot() {
   $('#nav').addEventListener('click', e => { const b = e.target.closest('button[data-view]'); if (b) showView(b.dataset.view); });
   poll();
   refreshHealth();
-  api('providers').then(p => { if (p.setup_pending) openWizard(); });
+  api('providers').then(async p => {
+    if (p.setup_pending) return openWizard();
+    // Set up, but the analysis model is missing (e.g. a download never finished): offer help instead of failing silently.
+    const h = await api('health');
+    const llm = h.endpoints?.llm;
+    if (llm && !llm.ready) {
+      toast(llm.reachable ? 'Das KI-Modell für die Analyse fehlt noch.' : 'Die KI ist gerade nicht erreichbar.',
+            { kind: 'info', action: 'Einrichten', onAction: () => openWizard(), ms: 20000 });
+    }
+  });
   setInterval(poll, 1500);
   setInterval(refreshHealth, 20000);
 }

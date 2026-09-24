@@ -123,7 +123,8 @@ fi
 step "KI-Quelle"
 HAS_LMS=0; HAS_OLLAMA=0
 [ -d "/Applications/LM Studio.app" ] && HAS_LMS=1
-{ [ -d "/Applications/Ollama.app" ] || command -v ollama >/dev/null 2>&1; } && HAS_OLLAMA=1
+{ [ -d "/Applications/Ollama.app" ] || [ -d "$HOME/Applications/Ollama.app" ] || command -v ollama >/dev/null 2>&1; } && HAS_OLLAMA=1
+{ [ -d "$HOME/Applications/LM Studio.app" ] || [ -x "$HOME/.lmstudio/bin/lms" ]; } && HAS_LMS=1
 if [ -z "$PROVIDER" ]; then
   echo   "  Womit soll die KI rechnen?"
   echo   "    1) Ollama     – schlank, läuft unsichtbar im Hintergrund $( [ $HAS_OLLAMA = 1 ] && echo '(installiert)' || echo '(wird installiert)')"
@@ -142,7 +143,8 @@ if [ "$PROVIDER" = "ollama" ] && [ $HAS_OLLAMA = 0 ]; then
   fi
   hdiutil detach -quiet "$MNT" || true
   open -g -a Ollama || true
-  info "Ollama installiert"
+  for _ in $(seq 1 30); do curl -fs -m 1 http://127.0.0.1:11434/api/version >/dev/null 2>&1 && break; sleep 1; done
+  info "Ollama installiert und gestartet"
 elif [ "$PROVIDER" = "lmstudio" ] && [ $HAS_LMS = 0 ]; then
   info "Bitte LM Studio installieren – die Download-Seite öffnet sich."
   open "https://lmstudio.ai/download" || true

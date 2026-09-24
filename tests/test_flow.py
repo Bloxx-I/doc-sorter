@@ -195,5 +195,33 @@ class NormaliseSenderTest(unittest.TestCase):
         self.assertIsNone(normalise_sender(None))
 
 
+
+class EndpointTest(unittest.TestCase):
+    def test_ollama_without_models_counts_as_connected(self):
+        """Fresh Ollama answers {"data": null} – the wizard must still see a working connection."""
+        from pipeline.ai import Endpoint
+
+        class Empty(BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = b'{"object": "list", "data": null}'
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Empty)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            endpoint = Endpoint(provider="custom", url=f"http://127.0.0.1:{server.server_port}/v1")
+            self.assertEqual(endpoint.models(), [])
+            self.assertTrue(endpoint.reachable())
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
 if __name__ == "__main__":
     unittest.main()

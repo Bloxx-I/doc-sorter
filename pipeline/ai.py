@@ -67,7 +67,8 @@ class Endpoint:
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         req = request.Request(self.url + "/models", headers=headers)
         with request.urlopen(req, timeout=timeout) as response:
-            return [m["id"] for m in json.load(response).get("data", [])]
+            # Ollama answers {"data": null} while no model is installed yet – that still means "connected".
+            return [m["id"] for m in (json.load(response).get("data") or [])]
 
     def reachable(self):
         try:
@@ -109,18 +110,36 @@ def start_provider(provider):
         cli = lms_cli()
         if cli:   # headless: starts the LM Studio server without opening the window
             subprocess.Popen([cli, "server", "start"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
-            subprocess.run(["open", "-g", "-a", "LM Studio"], capture_output=True)
+        elif app_path("LM Studio"):
+            subprocess.run(["open", "-g", str(app_path("LM Studio"))], capture_output=True)
     elif provider == "ollama":
-        if Path("/Applications/Ollama.app").exists():
-            subprocess.run(["open", "-g", "-a", "Ollama"], capture_output=True)
-        elif shutil.which("ollama"):
-            subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if app_path("Ollama"):
+            subprocess.run(["open", "-g", str(app_path("Ollama"))], capture_output=True)
+        elif ollama_cli():
+            subprocess.Popen([ollama_cli(), "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+
+
+def app_path(name):
+    """Apps may live in /Applications or, without admin rights, in ~/Applications."""
+    for folder in (Path("/Applications"), Path.home() / "Applications"):
+        if (folder / f"{name}.app").exists():
+            return folder / f"{name}.app"
+    return None
+
+
+def ollama_cli():
+    for path in (shutil.which("ollama"), "/usr/local/bin/ollama", "/opt/homebrew/bin/ollama"):
+        if path and Path(path).is_file():
+            return path
+    app = app_path("Ollama")
+    bundled = app / "Contents" / "Resources" / "ollama" if app else None
+    return str(bundled) if bundled and bundled.is_file() else None
 
 
 def installed_providers():
-    return {"lmstudio": Path("/Applications/LM Studio.app").exists() or bool(lms_cli()),
-            "ollama": Path("/Applications/Ollama.app").exists() or bool(shutil.which("ollama"))}
+    return {"lmstudio": bool(app_path("LM Studio") or lms_cli()),
+            "ollama": bool(app_path("Ollama") or ollama_cli())}
 
 
 def ollama_pull(model, base_url="http://127.0.0.1:11434/v1", progress=None):
