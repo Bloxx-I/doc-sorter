@@ -1,0 +1,8 @@
+venv/
+paddle-venv/
+__pycache__/
+*.pyc
+.DS_Store
+config.json
+storage/*.db
+storage/*.db-*

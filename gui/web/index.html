@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dokumenten-Sortierer</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="traffic-space pywebview-drag-region"></div>
+    <div class="brand pywebview-drag-region">
+      <div class="brand-mark"><svg viewBox="0 0 24 24"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 12v9M12 12l8-4.5M12 12 4 7.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
+      <div>
+        <div class="brand-title">Sortierer</div>
+        <div class="brand-sub">Dokumente, die sich selbst ablegen</div>
+      </div>
+    </div>
+    <nav class="nav" id="nav">
+      <button data-view="inbox" class="active"><i data-icon="inbox"></i><span>Eingang</span><b class="badge" id="inbox-badge"></b></button>
+      <button data-view="archive"><i data-icon="graph"></i><span>Ablage-Karte</span></button>
+      <button data-view="search"><i data-icon="search"></i><span>Suche</span></button>
+      <button data-view="log"><i data-icon="clock"></i><span>Protokoll</span></button>
+      <button data-view="settings"><i data-icon="gear"></i><span>Einstellungen</span></button>
+    </nav>
+    <div class="side-section">
+      <div class="side-heading"><span>Warteschlange</span><button class="icon-btn small" id="scan-btn" title="Eingang jetzt prüfen"><i data-icon="refresh"></i></button></div>
+      <div class="queue" id="queue"></div>
+    </div>
+    <div class="pause-banner" id="pause-banner"><i data-icon="pause"></i><span>Pausiert</span><button class="btn small">Fortsetzen</button></div>
+    <div class="side-footer" id="health"></div>
+  </aside>
+
+  <main class="main">
+    <!-- ============ INBOX ============ -->
+    <section class="view active" id="view-inbox">
+      <header class="topbar pywebview-drag-region">
+        <div class="crumbs"><span class="muted">Eingang</span><i data-icon="chevron"></i><span id="crumb-name">—</span></div>
+        <div class="topbar-actions">
+          <button class="btn ghost" id="reanalyze-btn" title="Dokument erneut analysieren"><i data-icon="sparkle"></i>Neu analysieren</button>
+          <button class="btn ghost" id="reveal-src-btn" title="Original im Finder zeigen"><i data-icon="finder"></i>Original</button>
+        </div>
+      </header>
+
+      <div class="empty-state" id="inbox-empty">
+        <div class="empty-art">
+          <svg viewBox="0 0 200 140"><defs><linearGradient id="g1" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".25"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+            <ellipse cx="100" cy="122" rx="70" ry="10" fill="url(#g1)"/>
+            <rect x="52" y="30" width="96" height="76" rx="14" fill="var(--panel)" stroke="var(--line-strong)"/>
+            <path d="M52 74h28l8 12h24l8-12h28" fill="none" stroke="var(--line-strong)"/>
+            <path d="m84 52 10 10 22-22" fill="none" stroke="var(--ok)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h2 id="empty-title">Alles abgelegt</h2>
+        <p>Neue PDFs im Eingangsordner werden automatisch erkannt, gelesen und hier zur Ablage vorgeschlagen.</p>
+        <div class="path-pill" id="empty-incoming"></div>
+        <div class="empty-processing" id="empty-processing"></div>
+      </div>
+
+      <div class="review" id="review">
+        <div class="doc-head">
+          <div class="filename-row">
+            <div class="file-icon"><i data-icon="file"></i></div>
+            <div class="filename-wrap">
+              <label class="micro">Neuer Dateiname</label>
+              <div class="filename-field">
+                <input id="filename" spellcheck="false" autocomplete="off">
+                <span class="ext">.pdf</span>
+                <button class="icon-btn small" id="filename-reset" title="Namen wieder automatisch bilden"><i data-icon="undo"></i></button>
+              </div>
+            </div>
+          </div>
+          <div class="meta-grid">
+            <label class="meta"><span>Datum</span><input id="m-date" type="date"></label>
+            <label class="meta"><span>Absender</span><input id="m-sender" spellcheck="false" placeholder="z. B. Telekom"></label>
+            <label class="meta"><span>Art</span><input id="m-type" spellcheck="false" list="types" placeholder="Rechnung"></label>
+            <label class="meta"><span>Stichwort</span><input id="m-keyword" spellcheck="false" placeholder="Mobilfunk"></label>
+            <datalist id="types"><option>Rechnung</option><option>Vertrag</option><option>Angebot</option><option>Verbrauchsabrechnung</option><option>Kontoauszug</option><option>Bescheid</option><option>Versicherung</option><option>Lohnabrechnung</option><option>Kündigung</option><option>Brief</option></datalist>
+          </div>
+          <div class="source-line" id="source-line"></div>
+        </div>
+
+        <div class="split">
+          <div class="card doc-card">
+            <div class="card-head">
+              <div class="seg" id="doc-seg"><button class="on" data-mode="page">Vorschau</button><button data-mode="text">Erkannter Text</button></div>
+              <div class="pager"><button class="icon-btn small" id="pg-prev"><i data-icon="left"></i></button><span id="pg-label">1 / 1</span><button class="icon-btn small" id="pg-next"><i data-icon="right"></i></button></div>
+            </div>
+            <div class="doc-body">
+              <div class="page-frame" id="page-frame" title="Doppelklick öffnet das PDF in Vorschau"><img id="page-img" alt=""><div class="page-loading"><span class="spinner"></span></div></div>
+              <pre class="ocr-text" id="ocr-text"></pre>
+            </div>
+          </div>
+
+          <div class="card map-card">
+            <div class="card-head">
+              <div class="card-title"><i data-icon="graph"></i>Wohin damit?</div>
+              <div class="suggest-chips" id="suggest-chips"></div>
+            </div>
+            <div class="map-host" id="review-map"></div>
+          </div>
+        </div>
+
+        <footer class="actionbar">
+          <div class="targets">
+            <span class="micro">Ablage in</span>
+            <div class="target-chips" id="target-chips"></div>
+          </div>
+          <div class="action-buttons">
+            <div class="keys"><kbd>⏎</kbd><kbd>Leertaste</kbd> ablegen · <kbd>1</kbd>–<kbd>4</kbd> Vorschläge · <kbd>N</kbd> Ordner wählen</div>
+            <button class="btn" id="skip-btn">Überspringen</button>
+            <button class="btn primary" id="approve-btn"><i data-icon="check"></i>Ablegen</button>
+          </div>
+        </footer>
+      </div>
+    </section>
+
+    <!-- ============ ARCHIVE ============ -->
+    <section class="view" id="view-archive">
+      <header class="topbar pywebview-drag-region">
+        <div class="crumbs"><span>Ablage-Karte</span><span class="muted" id="archive-root"></span></div>
+        <div class="topbar-actions"><button class="btn ghost" id="archive-refresh"><i data-icon="refresh"></i>Aktualisieren</button></div>
+      </header>
+      <div class="archive-layout">
+        <div class="card map-card full"><div class="map-host" id="archive-map"></div></div>
+        <div class="card folder-panel" id="folder-panel">
+          <div class="card-head"><div class="card-title" id="folder-title"><i data-icon="folder"></i>Ordner wählen</div></div>
+          <div class="folder-path" id="folder-path"></div>
+          <div class="file-list" id="folder-files"><div class="hint-empty">Klicke einen Ordner in der Karte an, um seine Dokumente zu sehen.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SEARCH ============ -->
+    <section class="view" id="view-search">
+      <header class="topbar pywebview-drag-region"><div class="crumbs"><span>Suche</span></div></header>
+      <div class="search-wrap">
+        <div class="search-hero">
+          <i data-icon="search"></i>
+          <input id="search-input" placeholder="Beschreibe, was du suchst – z. B. „Handyvertrag Telekom 2024“" spellcheck="false" autocomplete="off">
+          <kbd>⏎</kbd>
+        </div>
+        <div class="search-mode" id="search-mode">Die Suche versteht Bedeutung, nicht nur Wörter – dank lokalem Embedding-Modell.</div>
+        <div class="results" id="search-results"></div>
+      </div>
+    </section>
+
+    <!-- ============ LOG ============ -->
+    <section class="view" id="view-log">
+      <header class="topbar pywebview-drag-region">
+        <div class="crumbs"><span>Protokoll</span></div>
+        <div class="topbar-actions">
+          <div class="seg" id="log-seg"><button class="on" data-mode="placements">Ablagen</button><button data-mode="events">Ereignisse</button></div>
+          <div class="filter"><i data-icon="search"></i><input id="log-filter" placeholder="Filtern …" spellcheck="false"></div>
+        </div>
+      </header>
+      <div class="table-wrap card" id="log-table"></div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="view" id="view-settings">
+      <header class="topbar pywebview-drag-region"><div class="crumbs"><span>Einstellungen</span></div></header>
+      <div class="settings">
+        <div class="card set-card">
+          <h3><i data-icon="folder"></i>Ordner</h3>
+          <div class="set-row top"><div><b>Eingangsordner</b><small>Alle werden beobachtet. Neue PDFs lösen die Sortierung aus.</small></div>
+            <div><div class="incoming-list" id="incoming-list"></div><button class="btn small" id="incoming-add"><i data-icon="plus"></i>Ordner hinzufügen …</button></div></div>
+          <div class="set-row"><div><b>Ablageverzeichnis</b><small>Wurzel der Ordnerstruktur – gerne in iCloud Drive.</small></div>
+            <div class="path-input"><input id="s-output" spellcheck="false"><button class="btn" data-choose="s-output">Wählen …</button></div></div>
+          <div class="set-note" id="icloud-note"></div>
+        </div>
+        <div class="card set-card">
+          <h3><i data-icon="sparkle"></i>KI-Rechenleistung</h3>
+          <p class="set-hint">Jede Aufgabe kann woanders laufen: lokal in LM Studio oder Ollama – oder auf einem schnellen Server im Heimnetz (jeder OpenAI-kompatible Server, z. B. LM Studio oder Ollama auf einem anderen Rechner). Lokales LM Studio / Ollama wird bei Bedarf automatisch gestartet.</p>
+          <div id="endpoints"></div>
+          <div class="ep-tools"><button class="btn small" id="ep-copy"><i data-icon="refresh"></i>Einstellung von „Analyse“ für alle übernehmen</button></div>
+        </div>
+        <div class="card set-card">
+          <h3><i data-icon="scan"></i>Texterkennung</h3>
+          <div class="pipeline" id="pipeline"></div>
+          <div class="set-row"><div><b>Erste Wahl bei Scans</b><small>PDF-Text wird immer zuerst direkt gelesen; fällt eine Erkennung aus, übernimmt die nächste</small></div>
+            <div class="seg" id="ocr-mode-seg"><button data-mode="vision">Apple Vision · schnell</button><button data-mode="glm">GLM-OCR · genau</button><button data-mode="paddle">PaddleOCR</button></div></div>
+        </div>
+        <div class="card set-card">
+          <h3><i data-icon="gear"></i>System</h3>
+          <div class="set-row"><div><b>Beim Anmelden starten</b><small>Läuft dann unauffällig in der Menüleiste</small></div><label class="switch"><input type="checkbox" id="s-login"><span></span></label></div>
+          <div class="set-row"><div><b>Einrichtungsassistent</b><small>Alles Schritt für Schritt neu einrichten</small></div><button class="btn small" id="rerun-setup"><i data-icon="sparkle"></i>Assistent starten</button></div>
+        </div>
+        <div class="settings-actions"><span class="muted" id="settings-msg"></span><button class="btn primary" id="settings-save"><i data-icon="check"></i>Speichern</button></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="popover" id="folder-pop">
+  <div class="pop-title">Neuer Ordner</div>
+  <div class="pop-parent" id="pop-parent"></div>
+  <input id="pop-name" placeholder="Ordnername" spellcheck="false" autocomplete="off">
+  <div class="pop-preview" id="pop-preview"></div>
+  <div class="pop-actions"><button class="btn" id="pop-cancel">Abbrechen</button><button class="btn primary" id="pop-ok">Anlegen &amp; wählen</button></div>
+</div>
+
+<div class="wizard" id="wizard">
+  <div class="wz-card">
+    <div class="wz-side">
+      <div class="brand-mark big"><svg viewBox="0 0 24 24"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 12v9M12 12l8-4.5M12 12 4 7.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
+      <div class="wz-steps" id="wz-steps"></div>
+    </div>
+    <div class="wz-main">
+      <section class="wz-page" data-step="0">
+        <h1>Willkommen beim Sortierer</h1>
+        <p class="wz-lead">Lege Briefe und Rechnungen als PDF in einen Ordner – der Sortierer liest sie, gibt ihnen einen sauberen Namen und schlägt vor, wo sie hingehören. Du bestätigst nur noch mit <kbd>Enter</kbd>.</p>
+        <div class="wz-points">
+          <div><i data-icon="scan"></i><b>Liest</b><span>auch eingescannte Seiten</span></div>
+          <div><i data-icon="sparkle"></i><b>Benennt</b><span>Datum_Absender_Thema.pdf</span></div>
+          <div><i data-icon="graph"></i><b>Sortiert</b><span>lernt aus deinen Entscheidungen</span></div>
+        </div>
+        <p class="wz-note">Alles bleibt auf diesem Mac, außer du wählst gleich einen eigenen Server.</p>
+      </section>
+      <section class="wz-page" data-step="1">
+        <h1>Womit soll die KI rechnen?</h1>
+        <p class="wz-lead">Die KI braucht ein Programm, das die Sprachmodelle ausführt.</p>
+        <div class="wz-choices" id="wz-providers"></div>
+        <div class="wz-endpoint">
+          <label>Adresse <input id="wz-url" spellcheck="false"></label>
+          <label id="wz-key-row">API-Schlüssel (optional) <input id="wz-key" spellcheck="false" placeholder="nur falls der Server einen verlangt"></label>
+          <button class="btn" id="wz-test"><i data-icon="refresh"></i>Verbindung prüfen</button>
+        </div>
+        <div class="wz-status" id="wz-status"></div>
+      </section>
+      <section class="wz-page" data-step="2">
+        <h1>Modelle</h1>
+        <p class="wz-lead">Diese Modelle werden gebraucht. Fehlende lädt der Sortierer für dich herunter – das dauert beim ersten Mal ein paar Minuten.</p>
+        <div class="wz-models" id="wz-models"></div>
+        <div class="wz-progress" id="wz-progress"><div class="bar"><i></i></div><span></span></div>
+        <button class="btn primary" id="wz-pull"><i data-icon="open"></i>Fehlende Modelle laden</button>
+      </section>
+      <section class="wz-page" data-step="3">
+        <h1>Texterkennung für Scans</h1>
+        <p class="wz-lead">PDFs mit Text werden direkt gelesen. Für eingescannte Seiten:</p>
+        <div class="wz-choices two" id="wz-ocr">
+          <button data-ocr="vision"><b>Apple Vision</b><span>In macOS eingebaut, sehr schnell (unter 1 Sekunde pro Seite). Empfohlen.</span></button>
+          <button data-ocr="glm"><b>GLM-OCR</b><span>Genauer bei Tabellen, braucht das Modell „glm-ocr“ (ca. 8 Sekunden pro Seite, auf einem Server schneller).</span></button>
+        </div>
+      </section>
+      <section class="wz-page" data-step="4">
+        <h1>Ordner</h1>
+        <p class="wz-lead">Wohin kommen neue PDFs, und wo soll sortiert abgelegt werden?</p>
+        <div class="wz-folder"><div><i data-icon="inbox"></i><b>Eingang</b><small>z. B. der Ordner, in den dein Scanner speichert</small></div><code id="wz-in"></code><button class="btn" data-wz-choose="in">Wählen …</button></div>
+        <div class="wz-folder"><div><i data-icon="folder"></i><b>Ablage</b><small>deine Ordnerstruktur, gern in iCloud Drive</small></div><code id="wz-out"></code><button class="btn" data-wz-choose="out">Wählen …</button></div>
+        <button class="btn small" id="wz-icloud"><i data-icon="cloud"></i>Ablage in iCloud Drive/Dokumente</button>
+      </section>
+      <section class="wz-page" data-step="5">
+        <h1>Fertig!</h1>
+        <p class="wz-lead">Der Sortierer wartet jetzt oben in der Menüleiste auf neue Dokumente.</p>
+        <label class="wz-check"><input type="checkbox" id="wz-login" checked> Beim Anmelden automatisch starten</label>
+        <div class="wz-summary" id="wz-summary"></div>
+      </section>
+      <footer class="wz-foot">
+        <button class="btn ghost" id="wz-back">Zurück</button>
+        <span class="wz-dots" id="wz-dots"></span>
+        <button class="btn primary" id="wz-next">Weiter</button>
+      </footer>
+    </div>
+  </div>
+</div>
+<div class="tooltip" id="tooltip"></div>
+<div class="toasts" id="toasts"></div>
+
+<script src="icons.js"></script>
+<script src="mindmap.js"></script>
+<script src="app.js"></script>
+<script src="setup.js"></script>
+</body>
+</html>
